@@ -1,5 +1,44 @@
+use ndarray::prelude::*;
+
 fn main() {
-    println!("Hello, world!");
+    graph_plot("step", step_function);
+    graph_plot("sigmoid", sigmoid);
+    graph_plot("relu", relu);
+}
+
+fn graph_plot(name: &str, f: impl Fn(f64) -> f64) {
+    use plotlib::page::Page;
+    use plotlib::repr::Plot;
+    use plotlib::style::LineStyle;
+    use plotlib::view::ContinuousView;
+
+    let s = Plot::from_function(f, -6., 6.).line_style(LineStyle::new());
+
+    let v = ContinuousView::new()
+        .add(s)
+        .x_range(-6., 6.)
+        .y_range(-0.5, 1.5)
+        .x_label("x")
+        .y_label("y");
+    Page::single(&v)
+        .save(format!("plots/{}.svg", name))
+        .unwrap();
+}
+
+fn step_function(x: f64) -> f64 {
+    if x > 0.0 {
+        1.0
+    } else {
+        0.0
+    }
+}
+
+fn relu(x: f64) -> f64 {
+    x.max(0.)
+}
+
+fn sigmoid(x: f64) -> f64 {
+    1.0 / (1.0 + std::f64::consts::E.powf(-x))
 }
 
 fn and(x1: f64, x2: f64) -> f64 {
@@ -11,6 +50,14 @@ fn and(x1: f64, x2: f64) -> f64 {
     } else {
         0.0
     }
+}
+
+#[test]
+fn ndarray_test() {
+    let a = array![[1., 2.], [3., 4.]];
+    let b = array![[5., 6.], [7., 8.]];
+
+    println!("{:?} {:?} {:?}", a.shape(), b.shape(), a.dot(&b));
 }
 
 #[test]

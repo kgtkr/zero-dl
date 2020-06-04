@@ -1,5 +1,6 @@
 use crate::activation_function::{ActivationFunction, Step};
 use crate::hlist_extra::AList;
+use frunk::labelled::Transmogrifier;
 use frunk::{HCons, HNil};
 use generic_array::{arr, ArrayLength, GenericArray};
 use std::marker::PhantomData;
@@ -12,7 +13,7 @@ impl PerceptronHList for HNil {}
 impl<H: Perceptron, T: PerceptronHList> PerceptronHList for HCons<H, T> {}
 
 /*
-x1 <- input(0)
+x1 <- input("x")
 x2 <- input(1)
 s1 = nand(x1, x2)
 s2 = or(x1, x2)
@@ -20,12 +21,17 @@ return and(s1, s2)
 
 */
 
-// hlist使いたい
 pub trait Perceptron {
-    type InputN;
-    type PlacefolderN;
+    type Params;
+    type Inputs;
+    type Placefolders;
+    type DefinedVariables;
+    type Variables;
 
-    fn exec(&self, xs: &impl AList<f64>) -> f64;
+    fn new(params: Self::Params, inputs: Self::Inputs) -> Self;
+
+    fn exec(&self, placefolders: &Self::Placefolders, variables: &mut Self::Variables) -> f64;
+    fn initialize_variables(&self) -> Self::DefinedVariables;
 }
 
 impl Perceptron<U2> {

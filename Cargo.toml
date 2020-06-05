@@ -8,10 +8,11 @@ default-run = "main"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-plotlib = "*"
-ndarray = "*"
-flate2 = "*"
-byteorder = "*"
+plotlib = "0.5.1"
+ndarray = "0.13.1"
+flate2 = "1.0.14"
+byteorder = "1.3.4"
+ndarray-rand = "0.11.0"
 
 [[bin]]
 name = "main"

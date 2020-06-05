@@ -9,3 +9,5 @@ edition = "2018"
 [dependencies]
 plotlib = "*"
 ndarray = "*"
+flate2 = "*"
+byteorder = "*"

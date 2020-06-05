@@ -3,6 +3,7 @@ name = "zero-dl"
 version = "0.1.0"
 authors = ["kgtkr <kgtkr.jp@gmail.com>"]
 edition = "2018"
+default-run = "main"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -11,3 +12,7 @@ plotlib = "*"
 ndarray = "*"
 flate2 = "*"
 byteorder = "*"
+
+[[bin]]
+name = "main"
+path = "src/main.rs"

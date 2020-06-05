@@ -2,8 +2,9 @@ use crate::arr_functions;
 use ndarray::prelude::*;
 use ndarray_rand::rand_distr::Normal;
 use ndarray_rand::RandomExt;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 pub enum ActivationFunctionKind {
     Softmax,
     Step,
@@ -24,7 +25,7 @@ impl ActivationFunctionKind {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct NN {
     // 活性化関数
     h: ActivationFunctionKind,
@@ -71,5 +72,35 @@ impl NN {
             hidden_size,
             output_size,
         }
+    }
+
+    pub fn serialize(&self) -> Vec<u8> {
+        bincode::serialize(&self).unwrap()
+    }
+
+    pub fn deserialize(buf: &[u8]) -> Option<NN> {
+        bincode::deserialize(buf).ok()
+    }
+
+    pub fn predict(&self, x: &Array1<f64>) -> Array1<f64> {
+        let mut cur = x.clone();
+        for (i, (w, b)) in self.wbs.iter().enumerate() {
+            let a = cur.dot(w) + b;
+
+            let v = (if i != self.wbs.len() - 1 {
+                self.h
+            } else {
+                self.a
+            })
+            .call(&a);
+            cur = v;
+        }
+
+        cur
+    }
+
+    pub fn loss(&self, x: &Array1<f64>, t: &Array1<f64>) -> f64 {
+        let y = self.predict(x);
+        arr_functions::cross_entroy_error(&y, t)
     }
 }

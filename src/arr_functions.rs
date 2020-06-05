@@ -1,5 +1,6 @@
 use crate::functions;
 use ndarray::prelude::*;
+use ndarray::Zip;
 
 pub fn softmax_arr1(xs: &Array1<f64>) -> Array1<f64> {
     let xs_iter = xs.iter().cloned();
@@ -23,6 +24,21 @@ pub fn sigmoid_arr1(xs: &Array1<f64>) -> Array1<f64> {
 
 pub fn identity_arr1(xs: &Array1<f64>) -> Array1<f64> {
     xs.mapv(functions::identity)
+}
+
+pub fn cross_entroy_error(x: &Array1<f64>, t: &Array1<f64>) -> f64 {
+    let delta = 1e-7;
+    -Zip::from(x)
+        .and(t)
+        .apply_collect(|x, t| t * (x + delta).log(std::f64::consts::E))
+        .sum()
+}
+
+pub fn mead_squared_error(x: &Array1<f64>, t: &Array1<f64>) -> f64 {
+    0.5 * Zip::from(x)
+        .and(t)
+        .apply_collect(|x, t| (x - t).powi(2))
+        .sum()
 }
 
 #[test]

@@ -22,6 +22,14 @@ impl MnistLabels {
 
         Some(MnistLabels { labels })
     }
+
+    pub fn to_data(&self) -> Array2<f64> {
+        let mut res = Array::zeros((self.labels.len(), 10));
+        for i in 0..self.labels.len() {
+            res[[i, self.labels[i] as usize]] = 1.;
+        }
+        res
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -56,5 +64,12 @@ impl MnistImages {
             height,
             images,
         })
+    }
+
+    pub fn to_data(&self) -> Array2<f64> {
+        self.images
+            .to_shared()
+            .reshape((self.images.len(), self.width * self.height))
+            .mapv(|x| x as f64 / 255.)
     }
 }

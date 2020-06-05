@@ -2,24 +2,25 @@ use crate::arr_functions;
 use ndarray::prelude::*;
 use ndarray_rand::rand_distr::Normal;
 use ndarray_rand::RandomExt;
+use rand::prelude::*;
 use serde::{Deserialize, Serialize};
 
 pub trait NetworkConfig {
-    fn h_activation_function(&self, xs: &Array1<f64>) -> Array1<f64>;
-    fn a_activation_function(&self, xs: &Array1<f64>) -> Array1<f64>;
+    fn h_activation_function(&self, xs: ArrayView1<f64>) -> Array1<f64>;
+    fn a_activation_function(&self, xs: ArrayView1<f64>) -> Array1<f64>;
     fn input_size(&self) -> usize;
     fn hidden_size(&self) -> &Vec<usize>;
     fn output_size(&self) -> usize;
 
-    fn predict(&self, params: &NetworkParams, x: &Array1<f64>) -> Array1<f64> {
-        let mut cur = x.clone();
+    fn predict(&self, params: &NetworkParams, x: ArrayView1<f64>) -> Array1<f64> {
+        let mut cur = x.to_owned();
         for (i, (w, b)) in params.0.iter().enumerate() {
             let a = cur.dot(w) + b;
 
             let v = if i != params.0.len() - 1 {
-                self.h_activation_function(&a)
+                self.h_activation_function(a.view())
             } else {
-                self.a_activation_function(&a)
+                self.a_activation_function(a.view())
             };
             cur = v;
         }
@@ -27,16 +28,16 @@ pub trait NetworkConfig {
         cur
     }
 
-    fn loss(&self, params: &NetworkParams, x: &Array1<f64>, t: &Array1<f64>) -> f64 {
+    fn loss(&self, params: &NetworkParams, x: ArrayView1<f64>, t: ArrayView1<f64>) -> f64 {
         let y = self.predict(params, x);
-        arr_functions::cross_entropy_error(&y, t)
+        arr_functions::cross_entropy_error(y.view(), t)
     }
 
     fn numerical_gradient(
         &self,
         params: &mut NetworkParams,
-        x: &Array1<f64>,
-        t: &Array1<f64>,
+        x: ArrayView1<f64>,
+        t: ArrayView1<f64>,
     ) -> Vec<(Array2<f64>, Array1<f64>)> {
         (0..params.0.len())
             .map(|i| {
@@ -95,14 +96,14 @@ pub struct ImplNetworkConfig<HAF, AAF> {
     pub output_size: usize,
 }
 
-impl<HAF: Fn(&Array1<f64>) -> Array1<f64>, AAF: Fn(&Array1<f64>) -> Array1<f64>> NetworkConfig
+impl<HAF: Fn(ArrayView1<f64>) -> Array1<f64>, AAF: Fn(ArrayView1<f64>) -> Array1<f64>> NetworkConfig
     for ImplNetworkConfig<HAF, AAF>
 {
-    fn h_activation_function(&self, xs: &Array1<f64>) -> Array1<f64> {
+    fn h_activation_function(&self, xs: ArrayView1<f64>) -> Array1<f64> {
         (self.h_activation_function)(xs)
     }
 
-    fn a_activation_function(&self, xs: &Array1<f64>) -> Array1<f64> {
+    fn a_activation_function(&self, xs: ArrayView1<f64>) -> Array1<f64> {
         (self.a_activation_function)(xs)
     }
 
@@ -171,20 +172,37 @@ impl<C: NetworkConfig> Network<C> {
         Network { config, params }
     }
 
-    pub fn predict(&self, x: &Array1<f64>) -> Array1<f64> {
+    pub fn predict(&self, x: ArrayView1<f64>) -> Array1<f64> {
         self.config.predict(&self.params, x)
     }
 
-    pub fn loss(&self, x: &Array1<f64>, t: &Array1<f64>) -> f64 {
+    pub fn loss(&self, x: ArrayView1<f64>, t: ArrayView1<f64>) -> f64 {
         self.config.loss(&self.params, x, t)
     }
 
     pub fn numerical_gradient(
         &mut self,
-        x: &Array1<f64>,
-        t: &Array1<f64>,
+        x: ArrayView1<f64>,
+        t: ArrayView1<f64>,
     ) -> Vec<(Array2<f64>, Array1<f64>)> {
         self.config.numerical_gradient(&mut self.params, x, t)
+    }
+
+    pub fn learning(&mut self, x_train: ArrayView2<f64>, t_train: ArrayView2<f64>) {
+        let iters_num = 10000;
+        let batch_size = 100;
+        let learning_rate = 0.1;
+        let mut rng = rand::thread_rng();
+
+        for _ in 0..iters_num {
+            for _ in 0..batch_size {
+                let i = rng.gen_range(0, x_train.len_of(Axis(0)));
+                let x = x_train.index_axis(Axis(0), i);
+                let t = t_train.index_axis(Axis(0), i);
+
+                self.numerical_gradient(x, t);
+            }
+        }
     }
 }
 

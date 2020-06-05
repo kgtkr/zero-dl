@@ -377,5 +377,6 @@ dependencies = [
  "ndarray",
  "ndarray-rand",
  "plotlib",
+ "rand",
  "serde",
 ]

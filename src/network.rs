@@ -43,6 +43,7 @@ pub trait NetworkConfig {
         (0..params.0.len())
             .map(|i| {
                 // TODO: 抽象化したいが所有権やばやば
+                // これじゃrayonも使えん
                 (
                     {
                         let mut grad = Array::zeros(params.0[i].0.raw_dim());
@@ -195,30 +196,24 @@ impl<C: NetworkConfig> Network<C> {
         let learning_rate = 0.1;
         let mut rng = rand::thread_rng();
 
-        for i in 0..iters_num {
-            for _ in 0..batch_size {
-                let i = rng.gen_range(0, x_train.len_of(Axis(0)));
-                let x = x_train.index_axis(Axis(0), i);
-                let t = t_train.index_axis(Axis(0), i);
-
-                let grad = self.numerical_gradient(x, t);
-
-                for (i, (gw, gb)) in grad.into_iter().enumerate() {
-                    Zip::from(&mut self.params.0[i].0)
-                        .and(&gw)
-                        .apply(|x, y| *x -= learning_rate * y);
-
-                    Zip::from(&mut self.params.0[i].1)
-                        .and(&gb)
-                        .apply(|x, y| *x -= learning_rate * y);
-                }
-            }
-
+        for index in 0..iters_num * batch_size {
             let i = rng.gen_range(0, x_train.len_of(Axis(0)));
             let x = x_train.index_axis(Axis(0), i);
             let t = t_train.index_axis(Axis(0), i);
 
-            println!("i:{} loss:{}", i, self.loss(x, t));
+            let grad = self.numerical_gradient(x, t);
+
+            for (i, (gw, gb)) in grad.into_iter().enumerate() {
+                Zip::from(&mut self.params.0[i].0)
+                    .and(&gw)
+                    .apply(|x, y| *x -= learning_rate * y);
+
+                Zip::from(&mut self.params.0[i].1)
+                    .and(&gb)
+                    .apply(|x, y| *x -= learning_rate * y);
+            }
+
+            println!("i:{} loss:{}", index, self.loss(x, t));
         }
     }
 }

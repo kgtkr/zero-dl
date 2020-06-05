@@ -69,7 +69,7 @@ impl MnistImages {
     pub fn to_data(&self) -> Array2<f64> {
         self.images
             .to_shared()
-            .reshape((self.images.len(), self.width * self.height))
+            .reshape((self.images.len_of(Axis(0)), self.width * self.height))
             .mapv(|x| x as f64 / 255.)
     }
 }

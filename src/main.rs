@@ -1,7 +1,49 @@
+use flate2::read::GzDecoder;
 use ndarray::prelude::*;
+use std::fs::File;
+use zero_dl::arr_functions;
 use zero_dl::functions::*;
+use zero_dl::mnist::{MnistImages, MnistLabels};
+use zero_dl::network::{ImplNetworkConfig, Network};
 
-fn main() {}
+fn main() {
+    let train_t = MnistLabels::parse(&mut GzDecoder::new(
+        File::open("mnist-data/train-labels-idx1-ubyte.gz").unwrap(),
+    ))
+    .unwrap()
+    .to_data();
+
+    let train_x = MnistImages::parse(&mut GzDecoder::new(
+        File::open("mnist-data/train-images-idx3-ubyte.gz").unwrap(),
+    ))
+    .unwrap()
+    .to_data();
+
+    let config = ImplNetworkConfig {
+        h_activation_function: arr_functions::sigmoid_arr1,
+        a_activation_function: arr_functions::softmax_arr1,
+        input_size: 784,
+        hidden_size: vec![100],
+        output_size: 10,
+    };
+
+    let mut network = Network::initialize(config);
+
+    println!("start");
+    network.learning(train_x.view(), train_t.view());
+
+    let test_t = MnistLabels::parse(&mut GzDecoder::new(
+        File::open("mnist-data/t10k-labels-idx1-ubyte.gz").unwrap(),
+    ))
+    .unwrap()
+    .to_data();
+
+    let test_x = MnistImages::parse(&mut GzDecoder::new(
+        File::open("mnist-data/t10k-images-idx3-ubyte.gz").unwrap(),
+    ))
+    .unwrap()
+    .to_data();
+}
 
 #[test]
 fn test_3_nn() {

@@ -1,6 +1,5 @@
 use crate::arr_functions;
 use ndarray::prelude::*;
-use ndarray::{indices, Zip};
 use ndarray_rand::rand_distr::Normal;
 use ndarray_rand::RandomExt;
 use serde::{Deserialize, Serialize};
@@ -170,6 +169,22 @@ impl<C: NetworkConfig> Network<C> {
 
     pub fn new(config: C, params: NetworkParams) -> Network<C> {
         Network { config, params }
+    }
+
+    pub fn predict(&self, x: &Array1<f64>) -> Array1<f64> {
+        self.config.predict(&self.params, x)
+    }
+
+    pub fn loss(&self, x: &Array1<f64>, t: &Array1<f64>) -> f64 {
+        self.config.loss(&self.params, x, t)
+    }
+
+    pub fn numerical_gradient(
+        &mut self,
+        x: &Array1<f64>,
+        t: &Array1<f64>,
+    ) -> Vec<(Array2<f64>, Array1<f64>)> {
+        self.config.numerical_gradient(&mut self.params, x, t)
     }
 }
 

@@ -1,6 +1,6 @@
 use crate::arr_functions;
 use ndarray::prelude::*;
-use ndarray::Zip;
+use ndarray::{indices, Zip};
 use ndarray_rand::rand_distr::Normal;
 use ndarray_rand::RandomExt;
 use serde::{Deserialize, Serialize};
@@ -33,27 +33,57 @@ pub trait NetworkConfig {
         arr_functions::cross_entropy_error(&y, t)
     }
 
-    fn numerical_gradient(&self, params: &mut NetworkParams, x: &Array1<f64>, t: &Array1<f64>) {
-        for (w, b) in &mut params.0 {
-            ({
-                let mut grad = Array::zeros(w.raw_dim());
+    fn numerical_gradient(
+        &self,
+        params: &mut NetworkParams,
+        x: &Array1<f64>,
+        t: &Array1<f64>,
+    ) -> Vec<(Array2<f64>, Array1<f64>)> {
+        (0..params.0.len())
+            .map(|i| {
+                // TODO: 抽象化したいが所有権やばやば
+                (
+                    {
+                        let mut grad = Array::zeros(params.0[i].0.raw_dim());
 
-                Zip::from(&mut grad).and(w).apply(|grad_x, w| {
-                    *grad_x = {
-                        let h = 1e-4;
+                        for idx in ndarray::indices(params.0[i].0.raw_dim()) {
+                            grad[idx] = {
+                                let h = 1e-4;
 
-                        let tmp_val = *w;
-                        *w = tmp_val + h;
-                        let fxh1 = self.loss(params, x, t);
-                        *w = tmp_val - h;
-                        let fxh2 = self.loss(params, x, t);
-                        *w = tmp_val;
-                        (fxh1 - fxh2) / (2. * h)
-                    };
-                });
-                grad
-            });
-        }
+                                let tmp_val = params.0[i].0[idx];
+                                params.0[i].0[idx] = tmp_val + h;
+                                let fxh1 = self.loss(params, x, t);
+                                params.0[i].0[idx] = tmp_val - h;
+                                let fxh2 = self.loss(params, x, t);
+                                params.0[i].0[idx] = tmp_val;
+                                (fxh1 - fxh2) / (2. * h)
+                            };
+                        }
+
+                        grad
+                    },
+                    {
+                        let mut grad = Array::zeros(params.0[i].1.raw_dim());
+
+                        for idx in ndarray::indices(params.0[i].1.raw_dim()) {
+                            grad[idx] = {
+                                let h = 1e-4;
+
+                                let tmp_val = params.0[i].1[idx];
+                                params.0[i].1[idx] = tmp_val + h;
+                                let fxh1 = self.loss(params, x, t);
+                                params.0[i].1[idx] = tmp_val - h;
+                                let fxh2 = self.loss(params, x, t);
+                                params.0[i].1[idx] = tmp_val;
+                                (fxh1 - fxh2) / (2. * h)
+                            };
+                        }
+
+                        grad
+                    },
+                )
+            })
+            .collect()
     }
 }
 
@@ -134,7 +164,8 @@ pub struct Network<C> {
 
 impl<C: NetworkConfig> Network<C> {
     pub fn initialize(config: C) -> Network<C> {
-        Network::new(config, NetworkParams::initialize(&config))
+        let params = NetworkParams::initialize(&config);
+        Network::new(config, params)
     }
 
     pub fn new(config: C, params: NetworkParams) -> Network<C> {
@@ -145,34 +176,4 @@ impl<C: NetworkConfig> Network<C> {
 pub fn numerical_diff(f: impl Fn(f64) -> f64, x: f64) -> f64 {
     let h = 1e-4;
     (f(x + h) - f(x - h)) / (2. * h)
-}
-
-pub fn numerical_diff_i<T>(this: &mut T, f: &impl Fn(&T) -> f64, x: &mut f64) -> f64 {
-    let h = 1e-4;
-
-    let tmp_val = *x;
-
-    *x = tmp_val + h;
-    let fxh1 = f(this);
-
-    *x = tmp_val - h;
-    let fxh2 = f(this);
-
-    *x = tmp_val;
-
-    (fxh1 - fxh2) / (2. * h)
-}
-
-pub fn numerical_gradient<T, D: Dimension>(
-    this: &mut T,
-    f: impl Fn(&T) -> f64,
-    xs: impl Fn(&mut T) -> &mut Array<f64, D>,
-) -> Array<f64, D> {
-    let mut grad = Array::zeros(xs(this).raw_dim());
-
-    Zip::from(&mut grad).and(xs(this)).apply(|grad_x, x| {
-        *grad_x = numerical_diff_i(this, &f, x);
-    });
-
-    grad
 }

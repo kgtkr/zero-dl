@@ -224,31 +224,31 @@ pub fn numerical_diff(f: impl Fn(f32) -> f32, x: f32) -> f32 {
 }
 
 pub struct Affine {
-    pub w: Array2<f32>,
-    pub b: Array1<f32>,
     pub x: Array1<f32>,
     pub dw: Array2<f32>,
     pub db: Array1<f32>,
 }
 
 impl Affine {
-    pub fn new(w: Array2<f32>, b: Array1<f32>) -> Affine {
+    pub fn new() -> Affine {
         Affine {
-            x: Array::zeros((w.len_of(Axis(0)),)),
-            dw: Array::zeros(w.raw_dim()),
-            db: Array::zeros(b.raw_dim()),
-            w,
-            b,
+            x: Array::zeros((0,)),
+            dw: Array::zeros((0, 0)),
+            db: Array::zeros((0,)),
         }
     }
 
-    pub fn forward(&mut self, x: Array1<f32>) -> Array1<f32> {
+    pub fn forward(&mut self, params: &(Array2<f32>, Array1<f32>), x: Array1<f32>) -> Array1<f32> {
         self.x = x;
-        self.x.dot(&self.w) + &self.b
+        self.x.dot(&params.0) + &params.1
     }
 
-    pub fn backward(&mut self, dout: Array1<f32>) -> Array1<f32> {
-        let dx = dout.dot(&self.w.t());
+    pub fn backward(
+        &mut self,
+        params: &(Array2<f32>, Array1<f32>),
+        dout: Array1<f32>,
+    ) -> Array1<f32> {
+        let dx = dout.dot(&params.0.t());
         self.dw = self
             .x
             .broadcast((1, self.x.len_of(Axis(0))))

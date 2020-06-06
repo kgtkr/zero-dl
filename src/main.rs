@@ -28,6 +28,40 @@ fn main() {
 
     println!("start");
     network.learning(train_x, train_t);
+
+    let test_t = MnistLabels::parse(&mut GzDecoder::new(
+        File::open("mnist-data/t10k-labels-idx1-ubyte.gz").unwrap(),
+    ))
+    .unwrap();
+
+    let test_x = MnistImages::parse(&mut GzDecoder::new(
+        File::open("mnist-data/t10k-images-idx3-ubyte.gz").unwrap(),
+    ))
+    .unwrap()
+    .to_data();
+
+    let mut succ = 0;
+
+    for i in 0..1000 {
+        let x = test_x.index_axis(Axis(0), i);
+        let t = test_t.labels[i];
+
+        let answer = network
+            .predict(x.to_owned())
+            .iter()
+            .enumerate()
+            .fold(
+                (0, 0.),
+                |(a, max), (i, &cur)| if cur > max { (i, cur) } else { (a, max) },
+            )
+            .0;
+
+        if answer == t as usize {
+            succ += 1;
+        }
+    }
+
+    println!("{}/1000", succ);
 }
 
 #[test]

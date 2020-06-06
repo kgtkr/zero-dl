@@ -67,27 +67,30 @@ impl<L: Layer<Input = Array1<f32>, Output = Array1<f32>, State = NetworkParams>>
     }
 
     pub fn learning(&mut self, x_train: Array2<f32>, t_train: Array2<f32>) {
-        let iters_num = 10000;
+        let iters_num = 1000;
         let batch_size = 100;
         let learning_rate = 0.1;
         let mut rng = rand::thread_rng();
 
-        for index in 0..iters_num * batch_size {
+        for index in 0..iters_num {
+            for _ in 0..batch_size {
+                let i = rng.gen_range(0, x_train.len_of(Axis(0)));
+                let x = x_train.index_axis(Axis(0), i);
+                let t = t_train.index_axis(Axis(0), i);
+                let grad = self.gradient(x.to_owned(), t.to_owned());
+                for (i, (gw, gb)) in grad.into_iter().enumerate() {
+                    Zip::from(&mut self.params.0[i].0)
+                        .and(&gw)
+                        .apply(|x, y| *x -= learning_rate * y);
+                    Zip::from(&mut self.params.0[i].1)
+                        .and(&gb)
+                        .apply(|x, y| *x -= learning_rate * y);
+                }
+            }
+
             let i = rng.gen_range(0, x_train.len_of(Axis(0)));
             let x = x_train.index_axis(Axis(0), i);
             let t = t_train.index_axis(Axis(0), i);
-
-            let grad = self.gradient(x.to_owned(), t.to_owned());
-
-            for (i, (gw, gb)) in grad.into_iter().enumerate() {
-                Zip::from(&mut self.params.0[i].0)
-                    .and(&gw)
-                    .apply(|x, y| *x -= learning_rate * y);
-
-                Zip::from(&mut self.params.0[i].1)
-                    .and(&gb)
-                    .apply(|x, y| *x -= learning_rate * y);
-            }
 
             println!("i:{} loss:{}", index, self.loss(x.to_owned(), t.to_owned()));
         }

@@ -1,7 +1,7 @@
 use ndarray::prelude::*;
 use ndarray::Zip;
 
-pub fn and(x1: f64, x2: f64) -> f64 {
+pub fn and(x1: f32, x2: f32) -> f32 {
     let x = array![x1, x2];
     let w = array![0.5, 0.5];
     let b = -0.7;
@@ -20,7 +20,7 @@ fn test_and() {
     assert_eq!(1.0, and(1.0, 1.0));
 }
 
-pub fn nand(x1: f64, x2: f64) -> f64 {
+pub fn nand(x1: f32, x2: f32) -> f32 {
     let x = array![x1, x2];
     let w = array![-0.5, -0.5];
     let b = 0.7;
@@ -39,7 +39,7 @@ fn test_nand() {
     assert_eq!(0.0, nand(1.0, 1.0));
 }
 
-pub fn or(x1: f64, x2: f64) -> f64 {
+pub fn or(x1: f32, x2: f32) -> f32 {
     let x = array![x1, x2];
     let w = array![0.5, 0.5];
     let b = -0.2;
@@ -58,7 +58,7 @@ fn test_or() {
     assert_eq!(1.0, or(1.0, 1.0));
 }
 
-pub fn xor(x1: f64, x2: f64) -> f64 {
+pub fn xor(x1: f32, x2: f32) -> f32 {
     let s1 = nand(x1, x2);
     let s2 = or(x1, x2);
     let y = and(s1, s2);

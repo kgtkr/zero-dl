@@ -2,39 +2,39 @@ use crate::functions;
 use ndarray::prelude::*;
 use ndarray::Zip;
 
-pub fn softmax_arr1(xs: ArrayView1<f64>) -> Array1<f64> {
+pub fn softmax_arr1(xs: ArrayView1<f32>) -> Array1<f32> {
     let xs_iter = xs.iter().cloned();
     let c = xs_iter.clone().fold(xs[0], |a, b| a.max(b));
-    let exp = xs_iter.clone().map(|x| std::f64::consts::E.powf(x - c));
-    let exp_sum = exp.clone().sum::<f64>();
+    let exp = xs_iter.clone().map(|x| std::f32::consts::E.powf(x - c));
+    let exp_sum = exp.clone().sum::<f32>();
     exp.map(|x| x / exp_sum).collect()
 }
 
-pub fn step_arr1(xs: ArrayView1<f64>) -> Array1<f64> {
+pub fn step_arr1(xs: ArrayView1<f32>) -> Array1<f32> {
     xs.mapv(functions::step)
 }
 
-pub fn relu_arr1(xs: ArrayView1<f64>) -> Array1<f64> {
+pub fn relu_arr1(xs: ArrayView1<f32>) -> Array1<f32> {
     xs.mapv(functions::relu)
 }
 
-pub fn sigmoid_arr1(xs: ArrayView1<f64>) -> Array1<f64> {
+pub fn sigmoid_arr1(xs: ArrayView1<f32>) -> Array1<f32> {
     xs.mapv(functions::sigmoid)
 }
 
-pub fn identity_arr1(xs: ArrayView1<f64>) -> Array1<f64> {
+pub fn identity_arr1(xs: ArrayView1<f32>) -> Array1<f32> {
     xs.mapv(functions::identity)
 }
 
-pub fn cross_entropy_error(x: ArrayView1<f64>, t: ArrayView1<f64>) -> f64 {
+pub fn cross_entropy_error(x: ArrayView1<f32>, t: ArrayView1<f32>) -> f32 {
     let delta = 1e-7;
     -Zip::from(x)
         .and(t)
-        .apply_collect(|x, t| t * (x + delta).log(std::f64::consts::E))
+        .apply_collect(|x, t| t * (x + delta).log(std::f32::consts::E))
         .sum()
 }
 
-pub fn sum_squared_error(x: ArrayView1<f64>, t: ArrayView1<f64>) -> f64 {
+pub fn sum_squared_error(x: ArrayView1<f32>, t: ArrayView1<f32>) -> f32 {
     0.5 * Zip::from(x)
         .and(t)
         .apply_collect(|x, t| (x - t).powi(2))

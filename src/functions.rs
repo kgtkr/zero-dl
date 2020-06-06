@@ -1,4 +1,4 @@
-pub fn step(x: f64) -> f64 {
+pub fn step(x: f32) -> f32 {
     if x > 0.0 {
         1.0
     } else {
@@ -6,15 +6,15 @@ pub fn step(x: f64) -> f64 {
     }
 }
 
-pub fn relu(x: f64) -> f64 {
+pub fn relu(x: f32) -> f32 {
     x.max(0.)
 }
 
-pub fn sigmoid(x: f64) -> f64 {
-    1.0 / (1.0 + std::f64::consts::E.powf(-x))
+pub fn sigmoid(x: f32) -> f32 {
+    1.0 / (1.0 + std::f32::consts::E.powf(-x))
 }
 
-pub fn identity(x: f64) -> f64 {
+pub fn identity(x: f32) -> f32 {
     x
 }
 

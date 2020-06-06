@@ -23,7 +23,7 @@ fn main() {
         h_activation_function: arr_functions::sigmoid_arr1,
         a_activation_function: arr_functions::softmax_arr1,
         input_size: 784,
-        hidden_size: vec![100],
+        hidden_size: vec![15],
         output_size: 10,
     };
 

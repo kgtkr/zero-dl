@@ -1,10 +1,10 @@
-pub fn function_plot(name: &str, f: impl Fn(f64) -> f64) {
+pub fn function_plot(name: &str, f: impl Fn(f32) -> f32) {
     use plotlib::page::Page;
     use plotlib::repr::Plot;
     use plotlib::style::LineStyle;
     use plotlib::view::ContinuousView;
 
-    let s = Plot::from_function(f, -6., 6.).line_style(LineStyle::new());
+    let s = Plot::from_function(|x| f(x as f32) as f64, -6., 6.).line_style(LineStyle::new());
 
     let v = ContinuousView::new()
         .add(s)

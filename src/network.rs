@@ -214,7 +214,7 @@ impl<'a> Layer<'a> for Affine {
     type Backward = AffineBackward;
 
     fn forward<'b: 'a>(&'b self, x: Array1<f32>) -> (Self::Output, Self::Backward) {
-        let y = x.dot(&self.params.borrow().0) + &self.params.borrow().0;
+        let y = x.dot(&self.params.borrow().0) + &self.params.borrow().1;
         (
             y,
             AffineBackward {

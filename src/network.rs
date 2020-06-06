@@ -223,32 +223,61 @@ pub fn numerical_diff(f: impl Fn(f32) -> f32, x: f32) -> f32 {
     (f(x + h) - f(x - h)) / (2. * h)
 }
 
+pub trait Layer {
+    type Input;
+    type Output;
+
+    fn forward(&mut self, x: Self::Input) -> Self::Output;
+
+    fn backward(&mut self, dout: Self::Output) -> Self::Input;
+}
+
+impl<A: Layer, B: Layer<Input = A::Output>> Layer for (A, B) {
+    type Input = A::Input;
+    type Output = B::Output;
+
+    fn forward(&mut self, x: Self::Input) -> Self::Output {
+        let y = self.0.forward(x);
+        self.1.forward(y)
+    }
+
+    fn backward(&mut self, dout: Self::Output) -> Self::Input {
+        let dout2 = self.1.backward(dout);
+        self.0.backward(dout2)
+    }
+}
+
 pub struct Affine {
+    pub w: Array2<f32>,
+    pub b: Array1<f32>,
     pub x: Array1<f32>,
     pub dw: Array2<f32>,
     pub db: Array1<f32>,
 }
 
 impl Affine {
-    pub fn new() -> Affine {
+    pub fn new(w: Array2<f32>, b: Array1<f32>) -> Affine {
         Affine {
+            w,
+            b,
             x: Array::zeros((0,)),
             dw: Array::zeros((0, 0)),
             db: Array::zeros((0,)),
         }
     }
+}
 
-    pub fn forward(&mut self, params: &(Array2<f32>, Array1<f32>), x: Array1<f32>) -> Array1<f32> {
+impl Layer for Affine {
+    type Input = Array1<f32>;
+    type Output = Array1<f32>;
+
+    fn forward(&mut self, x: Array1<f32>) -> Array1<f32> {
         self.x = x;
-        self.x.dot(&params.0) + &params.1
+        self.x.dot(&self.w) + &self.b
     }
 
-    pub fn backward(
-        &mut self,
-        params: &(Array2<f32>, Array1<f32>),
-        dout: Array1<f32>,
-    ) -> Array1<f32> {
-        let dx = dout.dot(&params.0.t());
+    fn backward(&mut self, dout: Array1<f32>) -> Array1<f32> {
+        let dx = dout.dot(&self.w.t());
         self.dw = self
             .x
             .broadcast((1, self.x.len_of(Axis(0))))
@@ -268,13 +297,18 @@ impl Relu {
     pub fn new() -> Relu {
         Relu { x: array![] }
     }
+}
 
-    pub fn forward(&mut self, x: Array1<f32>) -> Array1<f32> {
+impl Layer for Relu {
+    type Input = Array1<f32>;
+    type Output = Array1<f32>;
+
+    fn forward(&mut self, x: Array1<f32>) -> Array1<f32> {
         self.x = x;
         self.x.mapv(|x| x.max(0.))
     }
 
-    pub fn backward(&mut self, mut dout: Array1<f32>) -> Array1<f32> {
+    fn backward(&mut self, mut dout: Array1<f32>) -> Array1<f32> {
         Zip::from(&mut dout).and(&self.x).apply(|dout_x, &x| {
             if x <= 0. {
                 *dout_x = 0.;
@@ -299,16 +333,21 @@ impl SoftmaxWithLoss {
             t: array![],
         }
     }
+}
 
-    pub fn forward(&mut self, x: Array1<f32>, t: Array1<f32>) -> f32 {
-        self.t = t;
+impl Layer for SoftmaxWithLoss {
+    type Input = Array1<f32>;
+    type Output = f32;
+
+    // 呼び出す前にtセット(なんとかする)
+    fn forward(&mut self, x: Array1<f32>) -> f32 {
         self.y = arr_functions::softmax_arr1(x.view());
         self.loss = arr_functions::cross_entropy_error(self.y.view(), self.t.view());
 
         self.loss
     }
 
-    pub fn backward(&mut self) -> Array1<f32> {
+    fn backward(&mut self, dout: f32) -> Array1<f32> {
         &self.y - &self.t
     }
 }

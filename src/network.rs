@@ -379,7 +379,7 @@ impl Layer for Affine {
             .broadcast((1, self.x.len_of(Axis(0))))
             .unwrap()
             .t()
-            .dot(&dout.broadcast((1, self.x.len_of(Axis(0)))).unwrap());
+            .dot(&dout.broadcast((1, dout.len_of(Axis(0)))).unwrap());
         self.db = dout;
         dx
     }

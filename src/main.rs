@@ -22,7 +22,7 @@ fn main() {
     let mut network = Network2::initialize(
         (Affine::new(0), (Relu::new(), Affine::new(1))),
         784,
-        vec![15],
+        vec![100],
         10,
     );
 

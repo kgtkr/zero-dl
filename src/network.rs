@@ -79,9 +79,6 @@ impl<'a, L: Layer<'a, Input = Array1<f32>, Output = Array1<f32>>> Network<L> {
         let learning_rate = 0.1;
         let mut rng = rand::thread_rng();
 
-        // TODO: 消したらエラー
-        self.gradient(panic!(), panic!());
-
         for index in 0..iters_num {
             for _ in 0..batch_size {
                 let i = rng.gen_range(0, x_train.len_of(Axis(0)));
@@ -89,10 +86,11 @@ impl<'a, L: Layer<'a, Input = Array1<f32>, Output = Array1<f32>>> Network<L> {
                 let t = t_train.index_axis(Axis(0), i);
                 let grad = self.gradient(x.to_owned(), t.to_owned());
                 for (i, (gw, gb)) in grad.into_iter().enumerate() {
-                    Zip::from(&mut params[i].borrow_mut().0)
+                    let mut mut_params = params[i].borrow_mut();
+                    Zip::from(&mut mut_params.0)
                         .and(&gw)
                         .apply(|x, y| *x -= learning_rate * y);
-                    Zip::from(&mut params[i].borrow_mut().1)
+                    Zip::from(&mut mut_params.1)
                         .and(&gb)
                         .apply(|x, y| *x -= learning_rate * y);
                 }

@@ -5,6 +5,11 @@ use ndarray_rand::rand_distr::Normal;
 use ndarray_rand::RandomExt;
 use rand::prelude::*;
 use serde::{Deserialize, Serialize};
+use std::marker::PhantomData;
+
+pub struct Network2 {}
+
+impl Network2 {}
 
 pub trait NetworkConfig {
     fn h_activation_function(&self, xs: ArrayView1<f32>) -> Array1<f32>;
@@ -226,40 +231,40 @@ pub fn numerical_diff(f: impl Fn(f32) -> f32, x: f32) -> f32 {
 pub trait Layer {
     type Input;
     type Output;
+    type State;
 
-    fn forward(&mut self, x: Self::Input) -> Self::Output;
+    fn forward(&mut self, state: &mut Self::State, x: Self::Input) -> Self::Output;
 
-    fn backward(&mut self, dout: Self::Output) -> Self::Input;
+    fn backward(&mut self, state: &mut Self::State, dout: Self::Output) -> Self::Input;
 }
 
-impl<A: Layer, B: Layer<Input = A::Output>> Layer for (A, B) {
+impl<A: Layer, B: Layer<Input = A::Output, State = A::State>> Layer for (A, B) {
     type Input = A::Input;
     type Output = B::Output;
+    type State = A::State;
 
-    fn forward(&mut self, x: Self::Input) -> Self::Output {
-        let y = self.0.forward(x);
-        self.1.forward(y)
+    fn forward(&mut self, state: &mut Self::State, x: Self::Input) -> Self::Output {
+        let y = self.0.forward(state, x);
+        self.1.forward(state, y)
     }
 
-    fn backward(&mut self, dout: Self::Output) -> Self::Input {
-        let dout2 = self.1.backward(dout);
-        self.0.backward(dout2)
+    fn backward(&mut self, state: &mut Self::State, dout: Self::Output) -> Self::Input {
+        let dout2 = self.1.backward(state, dout);
+        self.0.backward(state, dout2)
     }
 }
 
 pub struct Affine {
-    pub w: Array2<f32>,
-    pub b: Array1<f32>,
+    pub params_i: usize,
     pub x: Array1<f32>,
     pub dw: Array2<f32>,
     pub db: Array1<f32>,
 }
 
 impl Affine {
-    pub fn new(w: Array2<f32>, b: Array1<f32>) -> Affine {
+    pub fn new(params_i: usize) -> Affine {
         Affine {
-            w,
-            b,
+            params_i,
             x: Array::zeros((0,)),
             dw: Array::zeros((0, 0)),
             db: Array::zeros((0,)),
@@ -270,14 +275,15 @@ impl Affine {
 impl Layer for Affine {
     type Input = Array1<f32>;
     type Output = Array1<f32>;
+    type State = NetworkParams;
 
-    fn forward(&mut self, x: Array1<f32>) -> Array1<f32> {
+    fn forward(&mut self, state: &mut NetworkParams, x: Array1<f32>) -> Array1<f32> {
         self.x = x;
-        self.x.dot(&self.w) + &self.b
+        self.x.dot(&state.0[self.params_i].0) + &state.0[self.params_i].1
     }
 
-    fn backward(&mut self, dout: Array1<f32>) -> Array1<f32> {
-        let dx = dout.dot(&self.w.t());
+    fn backward(&mut self, state: &mut NetworkParams, dout: Array1<f32>) -> Array1<f32> {
+        let dx = dout.dot(&state.0[self.params_i].0.t());
         self.dw = self
             .x
             .broadcast((1, self.x.len_of(Axis(0))))
@@ -289,26 +295,31 @@ impl Layer for Affine {
     }
 }
 
-pub struct Relu {
+pub struct Relu<S> {
     pub x: Array1<f32>,
+    pub state: PhantomData<S>,
 }
 
-impl Relu {
-    pub fn new() -> Relu {
-        Relu { x: array![] }
+impl<S> Relu<S> {
+    pub fn new() -> Relu<S> {
+        Relu {
+            x: array![],
+            state: PhantomData,
+        }
     }
 }
 
-impl Layer for Relu {
+impl<S> Layer for Relu<S> {
     type Input = Array1<f32>;
     type Output = Array1<f32>;
+    type State = S;
 
-    fn forward(&mut self, x: Array1<f32>) -> Array1<f32> {
+    fn forward(&mut self, state: &mut S, x: Array1<f32>) -> Array1<f32> {
         self.x = x;
         self.x.mapv(|x| x.max(0.))
     }
 
-    fn backward(&mut self, mut dout: Array1<f32>) -> Array1<f32> {
+    fn backward(&mut self, state: &mut S, mut dout: Array1<f32>) -> Array1<f32> {
         Zip::from(&mut dout).and(&self.x).apply(|dout_x, &x| {
             if x <= 0. {
                 *dout_x = 0.;
@@ -319,35 +330,38 @@ impl Layer for Relu {
     }
 }
 
-pub struct SoftmaxWithLoss {
+pub struct SoftmaxWithLoss<S> {
     pub loss: f32,
     pub y: Array1<f32>,
     pub t: Array1<f32>,
+    pub state: PhantomData<S>,
 }
 
-impl SoftmaxWithLoss {
-    pub fn new() -> SoftmaxWithLoss {
+impl<S> SoftmaxWithLoss<S> {
+    pub fn new() -> SoftmaxWithLoss<S> {
         SoftmaxWithLoss {
             loss: 0.,
             y: array![],
             t: array![],
+            state: PhantomData,
         }
     }
 }
 
-impl Layer for SoftmaxWithLoss {
+impl<S> Layer for SoftmaxWithLoss<S> {
     type Input = Array1<f32>;
     type Output = f32;
+    type State = S;
 
     // 呼び出す前にtセット(なんとかする)
-    fn forward(&mut self, x: Array1<f32>) -> f32 {
+    fn forward(&mut self, state: &mut S, x: Array1<f32>) -> f32 {
         self.y = arr_functions::softmax_arr1(x.view());
         self.loss = arr_functions::cross_entropy_error(self.y.view(), self.t.view());
 
         self.loss
     }
 
-    fn backward(&mut self, dout: f32) -> Array1<f32> {
+    fn backward(&mut self, state: &mut S, dout: f32) -> Array1<f32> {
         &self.y - &self.t
     }
 }

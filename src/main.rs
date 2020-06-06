@@ -4,7 +4,7 @@ use std::fs::File;
 use zero_dl::arr_functions;
 use zero_dl::functions::*;
 use zero_dl::mnist::{MnistImages, MnistLabels};
-use zero_dl::network::{Affine, Network, Relu};
+use zero_dl::network::{mk_params, Affine, Network, Relu};
 
 fn main() {
     let train_t = MnistLabels::parse(&mut GzDecoder::new(
@@ -19,15 +19,16 @@ fn main() {
     .unwrap()
     .to_data();
 
-    let mut network = Network::initialize(
-        (Affine::new(0), (Relu::new(), Affine::new(1))),
-        784,
-        vec![100],
-        10,
-    );
+    let params1 = mk_params(784, 100);
+    let params2 = mk_params(100, 10);
+
+    let mut network = Network::initialize((
+        Affine::new(params1.clone()),
+        (Relu::new(), Affine::new(params2.clone())),
+    ));
 
     println!("start");
-    network.learning(train_x, train_t);
+    network.learning(&vec![params1, params2], train_x, train_t);
 
     let test_t = MnistLabels::parse(&mut GzDecoder::new(
         File::open("mnist-data/t10k-labels-idx1-ubyte.gz").unwrap(),
@@ -48,6 +49,7 @@ fn main() {
 
         let answer = network
             .predict(x.to_owned())
+            .0
             .iter()
             .enumerate()
             .fold(

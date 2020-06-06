@@ -17,48 +17,41 @@ pub fn mk_params(prev_n: usize, n: usize) -> Arc<RefCell<(Array2<f32>, Array1<f3
     )))
 }
 
-pub struct Network<L> {
-    pub layers: L,
+pub struct Network {
+    pub layers: (Affine, (Relu, Affine)),
     pub last_layer: SoftmaxWithLoss,
 }
 
-impl<'a, L: Layer<'a, Input = Array1<f32>, Output = Array1<f32>>> Network<L> {
-    pub fn initialize(layers: L) -> Network<L> {
+impl Network {
+    pub fn initialize(layers: (Affine, (Relu, Affine))) -> Network {
         Network {
             layers,
             last_layer: SoftmaxWithLoss::new(),
         }
     }
 
-    pub fn predict<'b: 'a>(
-        &'b self,
+    pub fn predict(
+        &self,
         x: Array1<f32>,
     ) -> (
         Array1<f32>,
-        impl LayerBackward<'a, Input = Array1<f32>, Output = Array1<f32>>,
+        impl LayerBackward<Input = Array1<f32>, Output = Array1<f32>>,
     ) {
         self.layers.forward(x)
     }
 
-    pub fn loss<'b: 'a>(
-        &'b mut self,
+    pub fn loss(
+        &mut self,
         x: Array1<f32>,
         t: Array1<f32>,
-    ) -> (
-        f32,
-        impl LayerBackward<'a, Input = Array1<f32>, Output = f32>,
-    ) {
+    ) -> (f32, impl LayerBackward<Input = Array1<f32>, Output = f32>) {
         let (y, ba1) = self.layers.forward(x);
         self.last_layer.t = t;
         let (loss, ba2) = self.last_layer.forward(y);
         (loss, (ba1, ba2))
     }
 
-    pub fn gradient<'b: 'a>(
-        &'b mut self,
-        x: Array1<f32>,
-        t: Array1<f32>,
-    ) -> Vec<(Array2<f32>, Array1<f32>)> {
+    pub fn gradient(&mut self, x: Array1<f32>, t: Array1<f32>) -> Vec<(Array2<f32>, Array1<f32>)> {
         let (_, ba) = self.loss(x, t);
 
         let mut grads = Vec::new();
@@ -68,8 +61,8 @@ impl<'a, L: Layer<'a, Input = Array1<f32>, Output = Array1<f32>>> Network<L> {
         grads
     }
 
-    pub fn learning<'b: 'a>(
-        &'b mut self,
+    pub fn learning(
+        &mut self,
         params: &Vec<Arc<RefCell<(Array2<f32>, Array1<f32>)>>>,
         x_train: Array2<f32>,
         t_train: Array2<f32>,

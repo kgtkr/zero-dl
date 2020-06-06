@@ -60,12 +60,12 @@ impl<'a, L: Layer<'a, Input = Array1<f32>, Output = Array1<f32>>> Network<L> {
         t: Array1<f32>,
     ) -> Vec<(Array2<f32>, Array1<f32>)> {
         let (_, ba) = self.loss(x, t);
-        let dout = ba.backward(1.);
 
-        /*  TODO: let mut grads = Vec::new();
-         self.layers.collect_grads(&mut grads);
-        grads */
-        panic!()
+        let mut grads = Vec::new();
+        let dout = ba.backward(&mut grads, 1.);
+        grads.reverse();
+
+        grads
     }
 
     pub fn learning<'b: 'a>(
@@ -133,7 +133,11 @@ pub trait LayerBackward<'a> {
     type Input;
     type Output;
 
-    fn backward(&self, dout: Self::Output) -> Self::Input;
+    fn backward(
+        &self,
+        grads: &mut Vec<(Array2<f32>, Array1<f32>)>,
+        dout: Self::Output,
+    ) -> Self::Input;
 }
 
 pub trait Layer<'a> {
@@ -150,9 +154,13 @@ impl<'a, A: LayerBackward<'a>, B: LayerBackward<'a, Input = A::Output>> LayerBac
     type Input = A::Input;
     type Output = B::Output;
 
-    fn backward(&self, dout: Self::Output) -> Self::Input {
-        let dout2 = self.1.backward(dout);
-        let dout3 = self.0.backward(dout2);
+    fn backward(
+        &self,
+        grads: &mut Vec<(Array2<f32>, Array1<f32>)>,
+        dout: Self::Output,
+    ) -> Self::Input {
+        let dout2 = self.1.backward(grads, dout);
+        let dout3 = self.0.backward(grads, dout2);
         dout3
     }
 }
@@ -178,10 +186,13 @@ impl<'a> LayerBackward<'a> for AffineBackward {
     type Input = Array1<f32>;
     type Output = Array1<f32>;
 
-    fn backward(&self, dout: Array1<f32>) -> Array1<f32> {
+    fn backward(
+        &self,
+        grads: &mut Vec<(Array2<f32>, Array1<f32>)>,
+        dout: Array1<f32>,
+    ) -> Array1<f32> {
         let dx = dout.dot(&self.params.borrow().0.t());
 
-        // TODO:
         let dw = self
             .x
             .broadcast((1, self.x.len_of(Axis(0))))
@@ -189,6 +200,8 @@ impl<'a> LayerBackward<'a> for AffineBackward {
             .t()
             .dot(&dout.broadcast((1, dout.len_of(Axis(0)))).unwrap());
         let db = dout;
+
+        grads.push((dw, db));
 
         dx
     }
@@ -229,7 +242,11 @@ impl<'a> LayerBackward<'a> for ReluBackward {
     type Input = Array1<f32>;
     type Output = Array1<f32>;
 
-    fn backward(&self, mut dout: Array1<f32>) -> Array1<f32> {
+    fn backward(
+        &self,
+        grads: &mut Vec<(Array2<f32>, Array1<f32>)>,
+        mut dout: Array1<f32>,
+    ) -> Array1<f32> {
         Zip::from(&mut dout).and(&self.x).apply(|dout_x, &x| {
             if x <= 0. {
                 *dout_x = 0.;
@@ -268,7 +285,7 @@ impl<'a> LayerBackward<'a> for SoftmaxWithLossBackward<'a> {
     type Input = Array1<f32>;
     type Output = f32;
 
-    fn backward(&self, dout: f32) -> Array1<f32> {
+    fn backward(&self, grads: &mut Vec<(Array2<f32>, Array1<f32>)>, dout: f32) -> Array1<f32> {
         &self.y - self.t
     }
 }

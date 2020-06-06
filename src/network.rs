@@ -67,7 +67,7 @@ impl<L: Layer<Input = Array1<f32>, Output = Array1<f32>, State = NetworkParams>>
     }
 
     pub fn learning(&mut self, x_train: Array2<f32>, t_train: Array2<f32>) {
-        let iters_num = 1000;
+        let iters_num = 100;
         let batch_size = 100;
         let learning_rate = 0.1;
         let mut rng = rand::thread_rng();

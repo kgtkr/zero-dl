@@ -292,6 +292,12 @@ impl<
             .t()
             .dot(&dout.broadcast((1, dout.len_of(Axis(0)))).unwrap());
         let db = dout;
+
+        self.x_layer.backward(dx);
+        self.params_layer.backward(AffineParamsValue {
+            weight: dw,
+            bias: db,
+        });
     }
 }
 

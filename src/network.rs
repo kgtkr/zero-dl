@@ -26,19 +26,22 @@ impl Network {
         x: Array1<f32>,
     ) -> (
         Array1<f32>,
-        impl LayerBackward<Input = Array1<f32>, Output = Array1<f32>>,
+        impl LayerBackward<(), (), Input = Array1<f32>, Output = Array1<f32>>,
     ) {
-        self.layers.forward(x)
+        self.layers.forward(x, &(), &())
     }
 
     pub fn loss(
         &mut self,
         x: Array1<f32>,
         t: Array1<f32>,
-    ) -> (f32, impl LayerBackward<Input = Array1<f32>, Output = f32>) {
-        let (y, ba1) = self.layers.forward(x);
+    ) -> (
+        f32,
+        impl LayerBackward<(), (), Input = Array1<f32>, Output = f32>,
+    ) {
+        let (y, ba1) = self.layers.forward(x, &(), &());
         self.last_layer.t = t;
-        let (loss, ba2) = self.last_layer.forward(y);
+        let (loss, ba2) = self.last_layer.forward(y, &(), &());
         (loss, (ba1, ba2))
     }
 
@@ -46,7 +49,7 @@ impl Network {
         let (_, ba) = self.loss(x, t);
 
         let mut grads = Vec::new();
-        let dout = ba.backward(&mut grads, 1.);
+        let dout = ba.backward(&mut grads, 1., &(), &());
         grads.reverse();
 
         grads
@@ -105,42 +108,82 @@ pub fn numerical_diff(f: impl Fn(f32) -> f32, x: f32) -> f32 {
     (f(x + h) - f(x - h)) / (2. * h)
 }
 
-pub trait LayerBackward<'a> {
+pub trait LayerBackward<'a, Placeholders, Variables> {
     type Input;
     type Output;
 
-    fn backward(&self, grads: &mut Vec<AffineParamsValue>, dout: Self::Output) -> Self::Input;
+    fn backward(
+        &self,
+        grads: &mut Vec<AffineParamsValue>,
+        dout: Self::Output,
+        placeholders: &Placeholders,
+        variables: &Variables,
+    ) -> Self::Input;
 }
 
-pub trait Layer<'a> {
+pub trait Layer<'a, Placeholders, Variables> {
     type Input;
     type Output;
-    type Backward: LayerBackward<'a, Input = Self::Input, Output = Self::Output>;
+    type Backward: LayerBackward<
+        'a,
+        Placeholders,
+        Variables,
+        Input = Self::Input,
+        Output = Self::Output,
+    >;
 
-    fn forward<'b: 'a>(&'b self, x: Self::Input) -> (Self::Output, Self::Backward);
+    fn forward<'b: 'a>(
+        &'b self,
+        x: Self::Input,
+        placeholders: &Placeholders,
+        variables: &Variables,
+    ) -> (Self::Output, Self::Backward);
 }
 
-impl<'a, A: LayerBackward<'a>, B: LayerBackward<'a, Input = A::Output>> LayerBackward<'a>
-    for (A, B)
+impl<
+        'a,
+        Placeholders,
+        Variables,
+        A: LayerBackward<'a, Placeholders, Variables>,
+        B: LayerBackward<'a, Placeholders, Variables, Input = A::Output>,
+    > LayerBackward<'a, Placeholders, Variables> for (A, B)
 {
     type Input = A::Input;
     type Output = B::Output;
 
-    fn backward(&self, grads: &mut Vec<AffineParamsValue>, dout: Self::Output) -> Self::Input {
-        let dout2 = self.1.backward(grads, dout);
-        let dout3 = self.0.backward(grads, dout2);
+    fn backward(
+        &self,
+        grads: &mut Vec<AffineParamsValue>,
+        dout: Self::Output,
+        placeholders: &Placeholders,
+        variables: &Variables,
+    ) -> Self::Input {
+        let dout2 = self.1.backward(grads, dout, placeholders, variables);
+        let dout3 = self.0.backward(grads, dout2, placeholders, variables);
         dout3
     }
 }
 
-impl<'a, A: Layer<'a>, B: Layer<'a, Input = A::Output>> Layer<'a> for (A, B) {
+impl<
+        'a,
+        Placeholders,
+        Variables,
+        A: Layer<'a, Placeholders, Variables>,
+        B: Layer<'a, Placeholders, Variables, Input = A::Output>,
+    > Layer<'a, Placeholders, Variables> for (A, B)
+{
     type Input = A::Input;
     type Output = B::Output;
     type Backward = (A::Backward, B::Backward);
 
-    fn forward<'b: 'a>(&'b self, x: Self::Input) -> (Self::Output, Self::Backward) {
-        let (y, ba1) = self.0.forward(x);
-        let (z, ba2) = self.1.forward(y);
+    fn forward<'b: 'a>(
+        &'b self,
+        x: Self::Input,
+        placeholders: &Placeholders,
+        variables: &Variables,
+    ) -> (Self::Output, Self::Backward) {
+        let (y, ba1) = self.0.forward(x, placeholders, variables);
+        let (z, ba2) = self.1.forward(y, placeholders, variables);
         (z, (ba1, ba2))
     }
 }
@@ -197,11 +240,17 @@ pub struct AffineBackward {
     pub x: Array1<f32>,
 }
 
-impl<'a> LayerBackward<'a> for AffineBackward {
+impl<'a, Placeholders, Variables> LayerBackward<'a, Placeholders, Variables> for AffineBackward {
     type Input = Array1<f32>;
     type Output = Array1<f32>;
 
-    fn backward(&self, grads: &mut Vec<AffineParamsValue>, dout: Array1<f32>) -> Array1<f32> {
+    fn backward(
+        &self,
+        grads: &mut Vec<AffineParamsValue>,
+        dout: Array1<f32>,
+        placeholders: &Placeholders,
+        variables: &Variables,
+    ) -> Array1<f32> {
         let dx = self.params.affine_backward(&dout);
 
         let dw = self
@@ -231,12 +280,17 @@ impl Affine {
     }
 }
 
-impl<'a> Layer<'a> for Affine {
+impl<'a, Placeholders, Variables> Layer<'a, Placeholders, Variables> for Affine {
     type Input = Array1<f32>;
     type Output = Array1<f32>;
     type Backward = AffineBackward;
 
-    fn forward<'b: 'a>(&'b self, x: Array1<f32>) -> (Self::Output, Self::Backward) {
+    fn forward<'b: 'a>(
+        &'b self,
+        x: Array1<f32>,
+        placeholders: &Placeholders,
+        variables: &Variables,
+    ) -> (Self::Output, Self::Backward) {
         let y = self.params.affine_forward(&x);
         (
             y,
@@ -252,11 +306,17 @@ pub struct ReluBackward {
     pub x: Array1<f32>,
 }
 
-impl<'a> LayerBackward<'a> for ReluBackward {
+impl<'a, Placeholders, Variables> LayerBackward<'a, Placeholders, Variables> for ReluBackward {
     type Input = Array1<f32>;
     type Output = Array1<f32>;
 
-    fn backward(&self, grads: &mut Vec<AffineParamsValue>, mut dout: Array1<f32>) -> Array1<f32> {
+    fn backward(
+        &self,
+        grads: &mut Vec<AffineParamsValue>,
+        mut dout: Array1<f32>,
+        placeholders: &Placeholders,
+        variables: &Variables,
+    ) -> Array1<f32> {
         Zip::from(&mut dout).and(&self.x).apply(|dout_x, &x| {
             if x <= 0. {
                 *dout_x = 0.;
@@ -275,12 +335,17 @@ impl Relu {
     }
 }
 
-impl<'a> Layer<'a> for Relu {
+impl<'a, Placeholders, Variables> Layer<'a, Placeholders, Variables> for Relu {
     type Input = Array1<f32>;
     type Output = Array1<f32>;
     type Backward = ReluBackward;
 
-    fn forward<'b: 'a>(&'b self, x: Array1<f32>) -> (Self::Output, Self::Backward) {
+    fn forward<'b: 'a>(
+        &'b self,
+        x: Array1<f32>,
+        placeholders: &Placeholders,
+        variables: &Variables,
+    ) -> (Self::Output, Self::Backward) {
         let y = x.mapv(|x| x.max(0.));
         (y, ReluBackward { x })
     }
@@ -291,11 +356,19 @@ pub struct SoftmaxWithLossBackward<'a> {
     pub t: &'a Array1<f32>,
 }
 
-impl<'a> LayerBackward<'a> for SoftmaxWithLossBackward<'a> {
+impl<'a, Placeholders, Variables> LayerBackward<'a, Placeholders, Variables>
+    for SoftmaxWithLossBackward<'a>
+{
     type Input = Array1<f32>;
     type Output = f32;
 
-    fn backward(&self, grads: &mut Vec<AffineParamsValue>, dout: f32) -> Array1<f32> {
+    fn backward(
+        &self,
+        grads: &mut Vec<AffineParamsValue>,
+        dout: f32,
+        placeholders: &Placeholders,
+        variables: &Variables,
+    ) -> Array1<f32> {
         &self.y - self.t
     }
 }
@@ -310,13 +383,18 @@ impl SoftmaxWithLoss {
     }
 }
 
-impl<'a> Layer<'a> for SoftmaxWithLoss {
+impl<'a, Placeholders, Variables> Layer<'a, Placeholders, Variables> for SoftmaxWithLoss {
     type Input = Array1<f32>;
     type Output = f32;
     type Backward = SoftmaxWithLossBackward<'a>;
 
     // 呼び出す前にtセット(なんとかする)
-    fn forward<'b: 'a>(&'b self, x: Array1<f32>) -> (Self::Output, Self::Backward) {
+    fn forward<'b: 'a>(
+        &'b self,
+        x: Array1<f32>,
+        placeholders: &Placeholders,
+        variables: &Variables,
+    ) -> (Self::Output, Self::Backward) {
         let y = arr_functions::softmax_arr1(x.view());
         let loss = arr_functions::cross_entropy_error(y.view(), self.t.view());
 

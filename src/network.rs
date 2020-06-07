@@ -11,13 +11,28 @@ use std::cell::RefCell;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
+pub trait LayerOutput {
+    // 微分した時の型。変数を除いて基本的にSelfになる
+    type Grad;
+}
+
+impl LayerOutput for f32 {
+    type Grad = Self;
+}
+
+impl<Ix> LayerOutput for Array<f32, Ix> {
+    type Grad = Self;
+}
+
+impl LayerOutput for AffineParams {
+    type Grad = AffineParamsValue;
+}
+
 pub trait Optimizer {
     // TODO: これ型クラス作ってOutputの微分値みたいな関連型でまとめたい
-    type Output;
-    type OutputGrad;
+    type Output: LayerOutput;
 
-    // TODO: 最適化みたいな名前に変える
-    fn optimize(self, dout: Self::OutputGrad);
+    fn optimize(self, dout: <Self::Output as LayerOutput>::Grad);
 }
 
 pub trait Layer {
@@ -44,41 +59,36 @@ pub struct AffineParamsValue {
     pub bias: Array1<f32>,
 }
 
-pub trait NetworkVar {
-    type MutableRef: Clone;
-    fn optimize(target: &Self::MutableRef, grad: &Self, learning_rate: f32);
+pub trait NetworkVar: Clone + LayerOutput {
+    fn optimize(&self, grad: &Self::Grad, learning_rate: f32);
 }
 
 #[derive(Debug, Clone)]
 pub struct VariableOptimizer<V: NetworkVar> {
-    pub value: V::MutableRef,
+    pub value: V,
 }
 
 impl<V: NetworkVar> Optimizer for VariableOptimizer<V> {
-    type Output = V::MutableRef;
-    type OutputGrad = V;
+    type Output = V;
 
-    fn optimize(self, dout: Self::OutputGrad) {
-        V::optimize(&self.value, &dout, 0.1);
+    fn optimize(self, dout: <Self::Output as LayerOutput>::Grad) {
+        &self.value.optimize(&dout, 0.1);
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct Variable<V: NetworkVar> {
-    pub value: V::MutableRef,
+    pub value: V,
 }
 
 impl<V: NetworkVar> Variable<V> {
-    pub fn new(value: V::MutableRef) -> Self {
+    pub fn new(value: V) -> Self {
         Variable { value }
     }
 }
 
-impl<V: NetworkVar> Layer for Variable<V>
-where
-    V: NetworkVar,
-{
-    type Output = V::MutableRef;
+impl<V: NetworkVar> Layer for Variable<V> {
+    type Output = V;
 
     type Optimizer = VariableOptimizer<V>;
 
@@ -99,11 +109,10 @@ pub struct PlaceholderOptimizer<K, V> {
     pub phantom: PhantomData<(K, V)>,
 }
 
-impl<K, V> Optimizer for PlaceholderOptimizer<K, V> {
-    type OutputGrad = V;
+impl<K, V: LayerOutput> Optimizer for PlaceholderOptimizer<K, V> {
     type Output = V;
 
-    fn optimize(self, dout: Self::Output) {}
+    fn optimize(self, dout: <Self::Output as LayerOutput>::Grad) {}
 }
 
 #[derive(Debug, Clone)]
@@ -119,7 +128,7 @@ impl<K, V> Placeholder<K, V> {
     }
 }
 
-impl<K, V> Layer for Placeholder<K, V> {
+impl<K, V: LayerOutput> Layer for Placeholder<K, V> {
     type Output = V;
 
     type Optimizer = PlaceholderOptimizer<K, V>;
@@ -158,11 +167,9 @@ impl AffineParams {
     }
 }
 
-impl NetworkVar for AffineParamsValue {
-    type MutableRef = AffineParams;
-
-    fn optimize(target: &AffineParams, grad: &Self, learning_rate: f32) {
-        let mut value = target.0.borrow_mut();
+impl NetworkVar for AffineParams {
+    fn optimize(&self, grad: &Self::Grad, learning_rate: f32) {
+        let mut value = self.0.borrow_mut();
         Zip::from(&mut value.weight)
             .and(&grad.weight)
             .apply(|x, y| *x -= learning_rate * y);
@@ -179,15 +186,12 @@ pub struct AffineOptimizer<XOpz, ParamsOpz> {
     pub x: Array1<f32>,
 }
 
-impl<
-        XOpz: Optimizer<OutputGrad = Array1<f32>>,
-        ParamsOpz: Optimizer<OutputGrad = AffineParamsValue>,
-    > Optimizer for AffineOptimizer<XOpz, ParamsOpz>
+impl<XOpz: Optimizer<Output = Array1<f32>>, ParamsOpz: Optimizer<Output = AffineParams>> Optimizer
+    for AffineOptimizer<XOpz, ParamsOpz>
 {
-    type OutputGrad = Array1<f32>;
     type Output = Array1<f32>;
 
-    fn optimize(self, dout: Self::OutputGrad) {
+    fn optimize(self, dout: <Self::Output as LayerOutput>::Grad) {
         let dx = self.params.affine_optimize(&dout);
 
         let dw = self
@@ -258,12 +262,11 @@ pub struct ReluOptimizer<XOpz> {
 
 impl<XOpz> Optimizer for ReluOptimizer<XOpz>
 where
-    XOpz: Optimizer<OutputGrad = Array1<f32>>,
+    XOpz: Optimizer<Output = Array1<f32>>,
 {
     type Output = Array1<f32>;
-    type OutputGrad = XOpz::OutputGrad;
 
-    fn optimize(self, mut dout: Self::OutputGrad) {
+    fn optimize(self, mut dout: <Self::Output as LayerOutput>::Grad) {
         Zip::from(&mut dout).and(&self.x).apply(|dout_x, &x| {
             if x <= 0. {
                 *dout_x = 0.;
@@ -309,10 +312,9 @@ pub struct SoftmaxWithLossOptimizer<XOpz, TOpz> {
 
 impl<XOpz, TOpz> Optimizer for SoftmaxWithLossOptimizer<XOpz, TOpz>
 where
-    XOpz: Optimizer<OutputGrad = Array1<f32>>,
-    TOpz: Optimizer<OutputGrad = Array1<f32>>,
+    XOpz: Optimizer<Output = Array1<f32>>,
+    TOpz: Optimizer<Output = Array1<f32>>,
 {
-    type OutputGrad = f32;
     type Output = f32;
 
     fn optimize(self, dout: f32) {

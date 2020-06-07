@@ -66,8 +66,8 @@ fn main() {
     let affine = layers!(&x, [784, 1000, 10,]);
     let softmax_with_loss = SoftmaxWithLoss::new(&affine, &t);
 
-    let iters_num = 1000;
-    let batch_size = 1000;
+    let iters_num = 100;
+    let batch_size = 100;
 
     for n in 0..iters_num * batch_size {
         let i = rng.gen_range(0, train_x.len_of(Axis(0)));

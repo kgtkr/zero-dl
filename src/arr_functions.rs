@@ -67,7 +67,6 @@ pub fn im2col(
     let out_h = (h + 2 * pad - filter_h) / stride + 1;
     let out_w = (w + 2 * pad - filter_w) / stride + 1;
 
-    // input_data.pad([(0, 0), (0, 0), (pad, pad), (pad, pad)])
     let mut img = Array::zeros((
         input_data.len_of(Axis(0)),
         input_data.len_of(Axis(1)),
@@ -75,15 +74,9 @@ pub fn im2col(
         input_data.len_of(Axis(3)) + pad * 2,
     ));
 
-    for i1 in 0..input_data.len_of(Axis(0)) {
-        for i2 in 0..input_data.len_of(Axis(1)) {
-            for i3 in 0..input_data.len_of(Axis(2)) {
-                for i4 in 0..input_data.len_of(Axis(3)) {
-                    img[(i1, i2, i3 + pad, i4 + pad)] = input_data[(i1, i2, i3, i4)];
-                }
-            }
-        }
-    }
+    let pad = pad as isize;
+    img.slice_mut(s![.., .., pad..-pad, pad..-pad])
+        .assign(&input_data);
 
     let mut col = Array::zeros((n, c, filter_h, filter_w, out_h, out_w));
 

@@ -8,13 +8,13 @@ use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::sync::Arc;
 
-pub struct Network {
-    pub layers: (Affine, (Relu, Affine)),
+pub struct Network<L> {
+    pub layers: L,
     pub last_layer: SoftmaxWithLoss,
 }
 
-impl Network {
-    pub fn initialize(layers: (Affine, (Relu, Affine))) -> Network {
+impl<L: Layer<(), (), Input = Array1<f32>, Output = Array1<f32>>> Network<L> {
+    pub fn initialize(layers: L) -> Network<L> {
         Network {
             layers,
             last_layer: SoftmaxWithLoss::new(),
@@ -108,7 +108,7 @@ pub fn numerical_diff(f: impl Fn(f32) -> f32, x: f32) -> f32 {
     (f(x + h) - f(x - h)) / (2. * h)
 }
 
-pub trait LayerBackward<'a, Placeholders, Variables> {
+pub trait LayerBackward<Placeholders, Variables> {
     type Input;
     type Output;
 
@@ -121,19 +121,18 @@ pub trait LayerBackward<'a, Placeholders, Variables> {
     ) -> Self::Input;
 }
 
-pub trait Layer<'a, Placeholders, Variables> {
+pub trait Layer<Placeholders, Variables> {
     type Input;
     type Output;
     type Backward: LayerBackward<
-        'a,
         Placeholders,
         Variables,
         Input = Self::Input,
         Output = Self::Output,
     >;
 
-    fn forward<'b: 'a>(
-        &'b self,
+    fn forward(
+        &self,
         x: Self::Input,
         placeholders: &Placeholders,
         variables: &Variables,
@@ -141,12 +140,11 @@ pub trait Layer<'a, Placeholders, Variables> {
 }
 
 impl<
-        'a,
         Placeholders,
         Variables,
-        A: LayerBackward<'a, Placeholders, Variables>,
-        B: LayerBackward<'a, Placeholders, Variables, Input = A::Output>,
-    > LayerBackward<'a, Placeholders, Variables> for (A, B)
+        A: LayerBackward<Placeholders, Variables>,
+        B: LayerBackward<Placeholders, Variables, Input = A::Output>,
+    > LayerBackward<Placeholders, Variables> for (A, B)
 {
     type Input = A::Input;
     type Output = B::Output;
@@ -168,16 +166,16 @@ impl<
         'a,
         Placeholders,
         Variables,
-        A: Layer<'a, Placeholders, Variables>,
-        B: Layer<'a, Placeholders, Variables, Input = A::Output>,
-    > Layer<'a, Placeholders, Variables> for (A, B)
+        A: Layer<Placeholders, Variables>,
+        B: Layer<Placeholders, Variables, Input = A::Output>,
+    > Layer<Placeholders, Variables> for (A, B)
 {
     type Input = A::Input;
     type Output = B::Output;
     type Backward = (A::Backward, B::Backward);
 
-    fn forward<'b: 'a>(
-        &'b self,
+    fn forward(
+        &self,
         x: Self::Input,
         placeholders: &Placeholders,
         variables: &Variables,
@@ -240,7 +238,7 @@ pub struct AffineBackward {
     pub x: Array1<f32>,
 }
 
-impl<'a, Placeholders, Variables> LayerBackward<'a, Placeholders, Variables> for AffineBackward {
+impl<'a, Placeholders, Variables> LayerBackward<Placeholders, Variables> for AffineBackward {
     type Input = Array1<f32>;
     type Output = Array1<f32>;
 
@@ -280,13 +278,13 @@ impl Affine {
     }
 }
 
-impl<'a, Placeholders, Variables> Layer<'a, Placeholders, Variables> for Affine {
+impl<'a, Placeholders, Variables> Layer<Placeholders, Variables> for Affine {
     type Input = Array1<f32>;
     type Output = Array1<f32>;
     type Backward = AffineBackward;
 
-    fn forward<'b: 'a>(
-        &'b self,
+    fn forward(
+        &self,
         x: Array1<f32>,
         placeholders: &Placeholders,
         variables: &Variables,
@@ -306,7 +304,7 @@ pub struct ReluBackward {
     pub x: Array1<f32>,
 }
 
-impl<'a, Placeholders, Variables> LayerBackward<'a, Placeholders, Variables> for ReluBackward {
+impl<'a, Placeholders, Variables> LayerBackward<Placeholders, Variables> for ReluBackward {
     type Input = Array1<f32>;
     type Output = Array1<f32>;
 
@@ -335,13 +333,13 @@ impl Relu {
     }
 }
 
-impl<'a, Placeholders, Variables> Layer<'a, Placeholders, Variables> for Relu {
+impl<Placeholders, Variables> Layer<Placeholders, Variables> for Relu {
     type Input = Array1<f32>;
     type Output = Array1<f32>;
     type Backward = ReluBackward;
 
-    fn forward<'b: 'a>(
-        &'b self,
+    fn forward(
+        &self,
         x: Array1<f32>,
         placeholders: &Placeholders,
         variables: &Variables,
@@ -351,14 +349,12 @@ impl<'a, Placeholders, Variables> Layer<'a, Placeholders, Variables> for Relu {
     }
 }
 
-pub struct SoftmaxWithLossBackward<'a> {
+pub struct SoftmaxWithLossBackward {
     pub y: Array1<f32>,
-    pub t: &'a Array1<f32>,
+    pub t: Array1<f32>,
 }
 
-impl<'a, Placeholders, Variables> LayerBackward<'a, Placeholders, Variables>
-    for SoftmaxWithLossBackward<'a>
-{
+impl<Placeholders, Variables> LayerBackward<Placeholders, Variables> for SoftmaxWithLossBackward {
     type Input = Array1<f32>;
     type Output = f32;
 
@@ -369,7 +365,7 @@ impl<'a, Placeholders, Variables> LayerBackward<'a, Placeholders, Variables>
         placeholders: &Placeholders,
         variables: &Variables,
     ) -> Array1<f32> {
-        &self.y - self.t
+        &self.y - &self.t
     }
 }
 
@@ -383,14 +379,14 @@ impl SoftmaxWithLoss {
     }
 }
 
-impl<'a, Placeholders, Variables> Layer<'a, Placeholders, Variables> for SoftmaxWithLoss {
+impl<Placeholders, Variables> Layer<Placeholders, Variables> for SoftmaxWithLoss {
     type Input = Array1<f32>;
     type Output = f32;
-    type Backward = SoftmaxWithLossBackward<'a>;
+    type Backward = SoftmaxWithLossBackward;
 
     // 呼び出す前にtセット(なんとかする)
-    fn forward<'b: 'a>(
-        &'b self,
+    fn forward(
+        &self,
         x: Array1<f32>,
         placeholders: &Placeholders,
         variables: &Variables,
@@ -398,6 +394,12 @@ impl<'a, Placeholders, Variables> Layer<'a, Placeholders, Variables> for Softmax
         let y = arr_functions::softmax_arr1(x.view());
         let loss = arr_functions::cross_entropy_error(y.view(), self.t.view());
 
-        (loss, SoftmaxWithLossBackward { t: &self.t, y })
+        (
+            loss,
+            SoftmaxWithLossBackward {
+                t: self.t.clone(), /* TODO: cloneしない */
+                y,
+            },
+        )
     }
 }

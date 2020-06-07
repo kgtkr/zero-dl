@@ -68,9 +68,8 @@ impl MnistImages {
 
     pub fn to_arr2(&self, normalize: bool) -> Array2<f32> {
         self.to_arr3(normalize)
-            .to_shared()
-            .reshape((self.images.len_of(Axis(0)), self.width * self.height))
-            .to_owned()
+            .into_shape((self.images.len_of(Axis(0)), self.width * self.height))
+            .unwrap()
     }
 
     pub fn to_arr3(&self, normalize: bool) -> Array3<f32> {

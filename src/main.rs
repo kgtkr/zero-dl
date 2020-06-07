@@ -4,7 +4,7 @@ use std::fs::File;
 use zero_dl::arr_functions;
 use zero_dl::functions::*;
 use zero_dl::mnist::{MnistImages, MnistLabels};
-use zero_dl::network::{mk_params, Affine, Network, Relu};
+use zero_dl::network::{Affine, AffineParams, Network, Relu};
 
 fn main() {
     let train_t = MnistLabels::parse(&mut GzDecoder::new(
@@ -19,8 +19,8 @@ fn main() {
     .unwrap()
     .to_data();
 
-    let params1 = mk_params(784, 100);
-    let params2 = mk_params(100, 10);
+    let params1 = AffineParams::initialize(784, 100);
+    let params2 = AffineParams::initialize(100, 10);
 
     let mut network = Network::initialize((
         Affine::new(params1.clone()),

@@ -8,15 +8,6 @@ use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::sync::Arc;
 
-pub fn mk_params(prev_n: usize, n: usize) -> Arc<RefCell<(Array2<f32>, Array1<f32>)>> {
-    let weight_init_std = 0.01;
-
-    Arc::new(RefCell::new((
-        Array::random((prev_n, n), Normal::new(0., 1.).unwrap()) * weight_init_std,
-        Array::zeros((n,)),
-    )))
-}
-
 pub struct Network {
     pub layers: (Affine, (Relu, Affine)),
     pub last_layer: SoftmaxWithLoss,
@@ -51,7 +42,7 @@ impl Network {
         (loss, (ba1, ba2))
     }
 
-    pub fn gradient(&mut self, x: Array1<f32>, t: Array1<f32>) -> Vec<(Array2<f32>, Array1<f32>)> {
+    pub fn gradient(&mut self, x: Array1<f32>, t: Array1<f32>) -> Vec<AffineParamsValue> {
         let (_, ba) = self.loss(x, t);
 
         let mut grads = Vec::new();
@@ -63,7 +54,7 @@ impl Network {
 
     pub fn learning(
         &mut self,
-        params: &Vec<Arc<RefCell<(Array2<f32>, Array1<f32>)>>>,
+        params: &Vec<AffineParams>,
         x_train: Array2<f32>,
         t_train: Array2<f32>,
     ) {
@@ -77,15 +68,9 @@ impl Network {
                 let i = rng.gen_range(0, x_train.len_of(Axis(0)));
                 let x = x_train.index_axis(Axis(0), i);
                 let t = t_train.index_axis(Axis(0), i);
-                let grad = self.gradient(x.to_owned(), t.to_owned());
-                for (i, (gw, gb)) in grad.into_iter().enumerate() {
-                    let mut mut_params = params[i].borrow_mut();
-                    Zip::from(&mut mut_params.0)
-                        .and(&gw)
-                        .apply(|x, y| *x -= learning_rate * y);
-                    Zip::from(&mut mut_params.1)
-                        .and(&gb)
-                        .apply(|x, y| *x -= learning_rate * y);
+                let grads = self.gradient(x.to_owned(), t.to_owned());
+                for (i, grad) in grads.into_iter().enumerate() {
+                    params[i].learning(learning_rate, &grad);
                 }
             }
 
@@ -124,11 +109,7 @@ pub trait LayerBackward<'a> {
     type Input;
     type Output;
 
-    fn backward(
-        &self,
-        grads: &mut Vec<(Array2<f32>, Array1<f32>)>,
-        dout: Self::Output,
-    ) -> Self::Input;
+    fn backward(&self, grads: &mut Vec<AffineParamsValue>, dout: Self::Output) -> Self::Input;
 }
 
 pub trait Layer<'a> {
@@ -145,11 +126,7 @@ impl<'a, A: LayerBackward<'a>, B: LayerBackward<'a, Input = A::Output>> LayerBac
     type Input = A::Input;
     type Output = B::Output;
 
-    fn backward(
-        &self,
-        grads: &mut Vec<(Array2<f32>, Array1<f32>)>,
-        dout: Self::Output,
-    ) -> Self::Input {
+    fn backward(&self, grads: &mut Vec<AffineParamsValue>, dout: Self::Output) -> Self::Input {
         let dout2 = self.1.backward(grads, dout);
         let dout3 = self.0.backward(grads, dout2);
         dout3
@@ -168,8 +145,46 @@ impl<'a, A: Layer<'a>, B: Layer<'a, Input = A::Output>> Layer<'a> for (A, B) {
     }
 }
 
+#[derive(Debug)]
+pub struct AffineParamsValue {
+    pub weight: Array2<f32>,
+    pub bias: Array1<f32>,
+}
+
+#[derive(Debug, Clone)]
+pub struct AffineParams(Arc<RefCell<AffineParamsValue>>);
+
+impl AffineParams {
+    pub fn initialize(prev_n: usize, n: usize) -> AffineParams {
+        let weight_init_std = 0.01;
+
+        AffineParams(Arc::new(RefCell::new(AffineParamsValue {
+            weight: Array::random((prev_n, n), Normal::new(0., 1.).unwrap()) * weight_init_std,
+            bias: Array::zeros((n,)),
+        })))
+    }
+
+    pub fn affine_forward(&self, x: &Array1<f32>) -> Array1<f32> {
+        x.dot(&self.0.borrow().weight) + &self.0.borrow().bias
+    }
+
+    pub fn affine_backward(&self, dout: &Array1<f32>) -> Array1<f32> {
+        dout.dot(&self.0.borrow().weight.t())
+    }
+
+    pub fn learning(&self, learning_rate: f32, grad: &AffineParamsValue) {
+        let mut value = self.0.borrow_mut();
+        Zip::from(&mut value.weight)
+            .and(&grad.weight)
+            .apply(|x, y| *x -= learning_rate * y);
+        Zip::from(&mut value.bias)
+            .and(&grad.bias)
+            .apply(|x, y| *x -= learning_rate * y);
+    }
+}
+
 pub struct AffineBackward {
-    pub params: Arc<RefCell<(Array2<f32>, Array1<f32>)>>,
+    pub params: AffineParams,
     pub x: Array1<f32>,
 }
 
@@ -177,12 +192,8 @@ impl<'a> LayerBackward<'a> for AffineBackward {
     type Input = Array1<f32>;
     type Output = Array1<f32>;
 
-    fn backward(
-        &self,
-        grads: &mut Vec<(Array2<f32>, Array1<f32>)>,
-        dout: Array1<f32>,
-    ) -> Array1<f32> {
-        let dx = dout.dot(&self.params.borrow().0.t());
+    fn backward(&self, grads: &mut Vec<AffineParamsValue>, dout: Array1<f32>) -> Array1<f32> {
+        let dx = self.params.affine_backward(&dout);
 
         let dw = self
             .x
@@ -192,18 +203,21 @@ impl<'a> LayerBackward<'a> for AffineBackward {
             .dot(&dout.broadcast((1, dout.len_of(Axis(0)))).unwrap());
         let db = dout;
 
-        grads.push((dw, db));
+        grads.push(AffineParamsValue {
+            weight: dw,
+            bias: db,
+        });
 
         dx
     }
 }
 
 pub struct Affine {
-    pub params: Arc<RefCell<(Array2<f32>, Array1<f32>)>>,
+    pub params: AffineParams,
 }
 
 impl Affine {
-    pub fn new(params: Arc<RefCell<(Array2<f32>, Array1<f32>)>>) -> Affine {
+    pub fn new(params: AffineParams) -> Affine {
         Affine { params }
     }
 }
@@ -214,7 +228,7 @@ impl<'a> Layer<'a> for Affine {
     type Backward = AffineBackward;
 
     fn forward<'b: 'a>(&'b self, x: Array1<f32>) -> (Self::Output, Self::Backward) {
-        let y = x.dot(&self.params.borrow().0) + &self.params.borrow().1;
+        let y = self.params.affine_forward(&x);
         (
             y,
             AffineBackward {
@@ -233,11 +247,7 @@ impl<'a> LayerBackward<'a> for ReluBackward {
     type Input = Array1<f32>;
     type Output = Array1<f32>;
 
-    fn backward(
-        &self,
-        grads: &mut Vec<(Array2<f32>, Array1<f32>)>,
-        mut dout: Array1<f32>,
-    ) -> Array1<f32> {
+    fn backward(&self, grads: &mut Vec<AffineParamsValue>, mut dout: Array1<f32>) -> Array1<f32> {
         Zip::from(&mut dout).and(&self.x).apply(|dout_x, &x| {
             if x <= 0. {
                 *dout_x = 0.;
@@ -276,7 +286,7 @@ impl<'a> LayerBackward<'a> for SoftmaxWithLossBackward<'a> {
     type Input = Array1<f32>;
     type Output = f32;
 
-    fn backward(&self, grads: &mut Vec<(Array2<f32>, Array1<f32>)>, dout: f32) -> Array1<f32> {
+    fn backward(&self, grads: &mut Vec<AffineParamsValue>, dout: f32) -> Array1<f32> {
         &self.y - self.t
     }
 }

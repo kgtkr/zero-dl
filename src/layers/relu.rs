@@ -3,15 +3,15 @@ use ndarray::prelude::*;
 use ndarray::Zip;
 
 pub struct ReluOptimizer<XOpz> {
-    pub x: Array1<f32>,
+    pub x: Array2<f32>,
     pub x_optimizer: XOpz,
 }
 
 impl<XOpz> Optimizer for ReluOptimizer<XOpz>
 where
-    XOpz: Optimizer<Output = Array1<f32>>,
+    XOpz: Optimizer<Output = Array2<f32>>,
 {
-    type Output = Array1<f32>;
+    type Output = Array2<f32>;
 
     fn optimize(self, mut dout: <Self::Output as LayerOutput>::Grad, learning_rate: f32) {
         Zip::from(&mut dout).and(&self.x).apply(|dout_x, &x| {
@@ -39,10 +39,10 @@ where
 
 impl<XL> Layer for Relu<XL>
 where
-    XL: Layer<Output = Array1<f32>>,
-    ReluOptimizer<XL::Optimizer>: Optimizer<Output = Array1<f32>>,
+    XL: Layer<Output = Array2<f32>>,
+    ReluOptimizer<XL::Optimizer>: Optimizer<Output = Array2<f32>>,
 {
-    type Output = Array1<f32>;
+    type Output = Array2<f32>;
     type Optimizer = ReluOptimizer<XL::Optimizer>;
     type Placeholders = XL::Placeholders;
 

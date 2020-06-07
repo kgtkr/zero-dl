@@ -4,23 +4,24 @@ use crate::layer::{Layer, Optimizer};
 use ndarray::prelude::*;
 
 pub struct SoftmaxWithLossOptimizer<XOpz, TOpz> {
-    pub y: Array1<f32>,
-    pub t: Array1<f32>,
+    pub y: Array2<f32>,
+    pub t: Array2<f32>,
     pub x_optimizer: XOpz,
     pub t_optimizer: TOpz,
 }
 
 impl<XOpz, TOpz> Optimizer for SoftmaxWithLossOptimizer<XOpz, TOpz>
 where
-    XOpz: Optimizer<Output = Array1<f32>>,
-    TOpz: Optimizer<Output = Array1<f32>>,
+    XOpz: Optimizer<Output = Array2<f32>>,
+    TOpz: Optimizer<Output = Array2<f32>>,
 {
     type Output = f32;
 
     fn optimize(self, dout: f32, learning_rate: f32) {
-        let d = &self.y - &self.t;
+        let batch_size = self.t.len_of(Axis(0));
+        let dx = (&self.y - &self.t) / batch_size as f32;
 
-        self.x_optimizer.optimize(d, learning_rate);
+        self.x_optimizer.optimize(dx, learning_rate);
         // TODO: 本当はtの微分も考えるべきかも？
     }
 }
@@ -41,9 +42,9 @@ where
 
 impl<XL, TL> Layer for SoftmaxWithLoss<XL, TL>
 where
-    XL: Layer<Output = Array1<f32>>,
-    TL: Layer<Output = Array1<f32>>,
-    SoftmaxWithLossOptimizer<XL::Optimizer, TL::Optimizer>: Optimizer<Output = f32>,
+    XL: Layer<Output = Array2<f32>>,
+    TL: Layer<Output = Array2<f32>>,
+    SoftmaxWithLossOptimizer<XL::Optimizer, TL::Optimizer>: Optimizer,
     XL::Placeholders: ConcatAndSplit<TL::Placeholders>,
 {
     type Output = f32;
@@ -56,8 +57,8 @@ where
         let (x, x_optimizer) = self.x_layer.forward(x_placeholders);
         let (t, t_optimizer) = self.t_layer.forward(t_placeholders);
 
-        let y = arr_functions::softmax_arr1(x.view());
-        let loss = arr_functions::cross_entropy_error(y.view(), t.view());
+        let y = arr_functions::softmax_batch(x.view());
+        let loss = arr_functions::cross_entropy_error_batch(y.view(), t.view());
 
         (
             loss,

@@ -31,11 +31,11 @@ impl AffineParams {
         })))
     }
 
-    pub fn affine_forward(&self, x: &Array1<f32>) -> Array1<f32> {
+    pub fn affine_forward(&self, x: &Array2<f32>) -> Array2<f32> {
         x.dot(&self.0.borrow().weight) + &self.0.borrow().bias
     }
 
-    pub fn affine_optimize(&self, dout: &Array1<f32>) -> Array1<f32> {
+    pub fn affine_optimize(&self, dout: &Array2<f32>) -> Array2<f32> {
         dout.dot(&self.0.borrow().weight.t())
     }
 }
@@ -56,24 +56,19 @@ pub struct AffineOptimizer<XOpz, ParamsOpz> {
     pub x_optimizer: XOpz,
     pub params_optimizer: ParamsOpz,
     pub params: AffineParams,
-    pub x: Array1<f32>,
+    pub x: Array2<f32>,
 }
 
-impl<XOpz: Optimizer<Output = Array1<f32>>, ParamsOpz: Optimizer<Output = AffineParams>> Optimizer
+impl<XOpz: Optimizer<Output = Array2<f32>>, ParamsOpz: Optimizer<Output = AffineParams>> Optimizer
     for AffineOptimizer<XOpz, ParamsOpz>
 {
-    type Output = Array1<f32>;
+    type Output = Array2<f32>;
 
     fn optimize(self, dout: <Self::Output as LayerOutput>::Grad, learning_rate: f32) {
         let dx = self.params.affine_optimize(&dout);
 
-        let dw = self
-            .x
-            .broadcast((1, self.x.len_of(Axis(0))))
-            .unwrap()
-            .t()
-            .dot(&dout.broadcast((1, dout.len_of(Axis(0)))).unwrap());
-        let db = dout;
+        let dw = self.x.t().dot(&dout);
+        let db = dout.sum_axis(Axis(0));
 
         self.x_optimizer.optimize(dx, learning_rate);
         self.params_optimizer.optimize(
@@ -105,14 +100,14 @@ where
 
 impl<XL, ParamsL> Layer for Affine<XL, ParamsL>
 where
-    XL: Layer<Output = Array1<f32>>,
+    XL: Layer<Output = Array2<f32>>,
     ParamsL: Layer<Output = AffineParams>,
     XL::Optimizer: Optimizer,
     ParamsL::Optimizer: Optimizer,
-    AffineOptimizer<XL::Optimizer, ParamsL::Optimizer>: Optimizer<Output = Array1<f32>>,
+    AffineOptimizer<XL::Optimizer, ParamsL::Optimizer>: Optimizer,
     XL::Placeholders: ConcatAndSplit<ParamsL::Placeholders>,
 {
-    type Output = Array1<f32>;
+    type Output = Array2<f32>;
     type Optimizer = AffineOptimizer<XL::Optimizer, ParamsL::Optimizer>;
     type Placeholders = <XL::Placeholders as ConcatAndSplit<ParamsL::Placeholders>>::Output;
 

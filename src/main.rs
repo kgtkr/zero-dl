@@ -2,6 +2,7 @@ use flate2::read::GzDecoder;
 use frunk::labelled::chars;
 use frunk::{field, hlist};
 use ndarray::prelude::*;
+use ndarray::Zip;
 use rand::prelude::*;
 use std::fs::File;
 use zero_dl::layer::{Layer, Optimizer};
@@ -56,24 +57,26 @@ fn main() {
 
     let mut rng = rand::thread_rng();
 
-    let x = Placeholder::<chars::x, Array1<f32>>::new();
-    let t = Placeholder::<chars::t, Array1<f32>>::new();
+    let x = Placeholder::<chars::x, Array2<f32>>::new();
+    let t = Placeholder::<chars::t, Array2<f32>>::new();
 
     let affine = layers!(&x, [784, 1000, 10,]);
+
     let softmax_with_loss = SoftmaxWithLoss::new(&affine, &t);
 
     let iters_num = 100;
     let batch_size = 100;
     let learning_rate = 0.1;
 
-    for n in 0..iters_num * batch_size {
-        let i = rng.gen_range(0, train_x.len_of(Axis(0)));
-        let x = train_x.index_axis(Axis(0), i);
-        let t = train_t.index_axis(Axis(0), i);
-        let (loss, optimizer) = softmax_with_loss.forward(hlist![
-            field![chars::x, x.to_owned()],
-            field![chars::t, t.to_owned()]
-        ]);
+    for n in 0..iters_num {
+        let ixs = (0..batch_size)
+            .map(|_| rng.gen_range(0, train_x.len_of(Axis(0))))
+            .collect::<Vec<_>>();
+
+        let x = train_x.select(Axis(0), &ixs[..]);
+        let t = train_t.select(Axis(0), &ixs[..]);
+        let (loss, optimizer) =
+            softmax_with_loss.forward(hlist![field![chars::x, x], field![chars::t, t]]);
         optimizer.optimize(1., learning_rate);
 
         if n % batch_size == batch_size - 1 {
@@ -81,20 +84,22 @@ fn main() {
         }
     }
 
-    let (ac, per) =
-        test_x
-            .axis_iter(Axis(0))
-            .zip(test_t.labels.iter())
-            .fold((0, 0), |(ac, per), (x, &t)| {
-                let y = max_idx(affine.forward(hlist![field![chars::x, x.to_owned()]]).0);
+    let res = Zip::from(
+        &affine
+            .forward(hlist![field![chars::x, test_x]])
+            .0
+            .map_axis(Axis(0), |x| max_idx(x)),
+    )
+    .and(&test_t.labels.mapv(|t| t as usize))
+    .apply_collect(|x, y| if x == y { 1 } else { 0 });
 
-                (ac + if y == t as usize { 1 } else { 0 }, per + 1)
-            });
+    let per = res.len_of(Axis(0));
+    let ac = res.sum();
 
     println!("{}/{}", ac, per);
 }
 
-fn max_idx(arr: Array1<f32>) -> usize {
+fn max_idx(arr: ArrayView1<f32>) -> usize {
     arr.iter()
         .enumerate()
         .fold(

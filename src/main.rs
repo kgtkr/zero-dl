@@ -40,7 +40,7 @@ fn main() {
 
     let iters_num = 10000;
 
-    for i in 0..iters_num {
+    for n in 0..iters_num {
         let i = rng.gen_range(0, train_x.len_of(Axis(0)));
         let x = train_x.index_axis(Axis(0), i);
         let t = train_t.index_axis(Axis(0), i);
@@ -50,7 +50,7 @@ fn main() {
         ]);
         ba.backward(1.);
 
-        println!("i:{} loss:{}", i, loss);
+        println!("i:{} loss:{}", n, loss);
     }
 
     let test_t = MnistLabels::parse(&mut GzDecoder::new(

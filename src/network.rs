@@ -24,6 +24,14 @@ impl<Ix> LayerOutput for Array<f32, Ix> {
     type Grad = Self;
 }
 
+impl<Ix> LayerOutput for ArcArray<f32, Ix> {
+    type Grad = Self;
+}
+
+impl<'a, Ix> LayerOutput for ArrayView<'a, f32, Ix> {
+    type Grad = Self;
+}
+
 impl LayerOutput for AffineParams {
     type Grad = AffineParamsValue;
 }
@@ -81,7 +89,10 @@ pub struct Variable<V: NetworkVar> {
     pub value: V,
 }
 
-impl<V: NetworkVar> Variable<V> {
+impl<V: NetworkVar> Variable<V>
+where
+    Self: Layer,
+{
     pub fn new(value: V) -> Self {
         Variable { value }
     }
@@ -120,7 +131,10 @@ pub struct Placeholder<K, V> {
     pub phantom: PhantomData<(K, V)>,
 }
 
-impl<K, V> Placeholder<K, V> {
+impl<K, V> Placeholder<K, V>
+where
+    Self: Layer,
+{
     pub fn new() -> Self {
         Placeholder {
             phantom: PhantomData,
@@ -218,7 +232,10 @@ pub struct Affine<XL, ParamsL> {
     pub params_layer: ParamsL,
 }
 
-impl<XL, ParamsL> Affine<XL, ParamsL> {
+impl<XL, ParamsL> Affine<XL, ParamsL>
+where
+    Self: Layer,
+{
     pub fn new(x_layer: XL, params_layer: ParamsL) -> Self {
         Affine {
             x_layer,
@@ -284,7 +301,10 @@ pub struct Relu<XL> {
     pub x_layer: XL,
 }
 
-impl<XL> Relu<XL> {
+impl<XL> Relu<XL>
+where
+    Self: Layer,
+{
     pub fn new(x_layer: XL) -> Relu<XL> {
         Relu { x_layer }
     }
@@ -333,7 +353,10 @@ pub struct SoftmaxWithLoss<XL, TL> {
     pub t_layer: TL,
 }
 
-impl<XL, TL> SoftmaxWithLoss<XL, TL> {
+impl<XL, TL> SoftmaxWithLoss<XL, TL>
+where
+    Self: Layer,
+{
     pub fn new(x_layer: XL, t_layer: TL) -> Self {
         SoftmaxWithLoss { x_layer, t_layer }
     }

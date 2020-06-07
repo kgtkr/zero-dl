@@ -6,87 +6,10 @@ use ndarray::prelude::*;
 use ndarray::Zip;
 use ndarray_rand::rand_distr::Normal;
 use ndarray_rand::RandomExt;
-use rand::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::marker::PhantomData;
 use std::sync::Arc;
-
-#[derive(frunk::LabelledGeneric, Clone, Debug)]
-pub struct PredictPlaceholders {
-    x: Array1<f32>,
-}
-
-pub type PredictPlaceholdersRepr = <PredictPlaceholders as LabelledGeneric>::Repr;
-
-#[derive(frunk::LabelledGeneric, Clone, Debug)]
-pub struct LossPlaceholders {
-    x: Array1<f32>,
-    t: Array1<f32>,
-}
-
-pub type LossPlaceholdersRepr = <LossPlaceholders as LabelledGeneric>::Repr;
-
-pub struct Network<L, LastL, LTransmogrifyIndexIndices, LastLTransmogrifyIndexIndices> {
-    pub layers: L,
-    pub last_layer: LastL,
-    pub phantom: PhantomData<(LTransmogrifyIndexIndices, LastLTransmogrifyIndexIndices)>,
-}
-
-impl<L, LastL, LTransmogrifyIndexIndices, LastLTransmogrifyIndexIndices>
-    Network<L, LastL, LTransmogrifyIndexIndices, LastLTransmogrifyIndexIndices>
-where
-    L: Layer<Output = Array1<f32>, Placeholders = PredictPlaceholdersRepr>,
-    LastL: Layer<Output = f32, Placeholders = LossPlaceholdersRepr>,
-    L::Placeholders: Transmogrifier<PredictPlaceholdersRepr, LTransmogrifyIndexIndices>,
-    LastL::Placeholders: Transmogrifier<LossPlaceholdersRepr, LastLTransmogrifyIndexIndices>,
-    LastL::Backward: LayerBackward<OutputGrad = f32>,
-{
-    pub fn initialize(layers: L, last_layer: LastL) -> Self {
-        Network {
-            layers,
-            last_layer,
-            phantom: PhantomData,
-        }
-    }
-
-    pub fn predict(&self, x: Array1<f32>) -> (Array1<f32>, L::Backward) {
-        self.layers
-            .forward(LabelledGeneric::into(PredictPlaceholders { x }))
-    }
-
-    pub fn loss(&mut self, x: Array1<f32>, t: Array1<f32>) -> (f32, LastL::Backward) {
-        self.last_layer
-            .forward(LabelledGeneric::into(LossPlaceholders { x, t }))
-    }
-
-    pub fn learning(&mut self, x_train: Array2<f32>, t_train: Array2<f32>) {
-        let iters_num = 100;
-        let batch_size = 100;
-        let learning_rate = 0.1;
-        let mut rng = rand::thread_rng();
-
-        for index in 0..iters_num {
-            for _ in 0..batch_size {
-                let i = rng.gen_range(0, x_train.len_of(Axis(0)));
-                let x = x_train.index_axis(Axis(0), i);
-                let t = t_train.index_axis(Axis(0), i);
-                let (_, ba) = self.loss(x.to_owned(), t.to_owned());
-                ba.backward(1.);
-            }
-
-            let i = rng.gen_range(0, x_train.len_of(Axis(0)));
-            let x = x_train.index_axis(Axis(0), i);
-            let t = t_train.index_axis(Axis(0), i);
-
-            println!(
-                "i:{} loss:{}",
-                index,
-                self.loss(x.to_owned(), t.to_owned()).0
-            );
-        }
-    }
-}
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct NetworkParams(pub Vec<(Array2<f32>, Array1<f32>)>);

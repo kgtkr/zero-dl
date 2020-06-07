@@ -9,8 +9,7 @@ use zero_dl::arr_functions;
 use zero_dl::functions::*;
 use zero_dl::mnist::{MnistImages, MnistLabels};
 use zero_dl::network::{
-    Affine, AffineParams, Layer, LayerBackward, LossPlaceholders, Network, Placeholder,
-    PredictPlaceholders, Relu, SoftmaxWithLoss, Variable,
+    Affine, AffineParams, Layer, LayerBackward, Placeholder, Relu, SoftmaxWithLoss, Variable,
 };
 
 macro_rules! layers {

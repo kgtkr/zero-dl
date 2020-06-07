@@ -25,6 +25,17 @@ fn main() {
     .unwrap()
     .to_data();
 
+    let test_t = MnistLabels::parse(&mut GzDecoder::new(
+        File::open("mnist-data/t10k-labels-idx1-ubyte.gz").unwrap(),
+    ))
+    .unwrap();
+
+    let test_x = MnistImages::parse(&mut GzDecoder::new(
+        File::open("mnist-data/t10k-images-idx3-ubyte.gz").unwrap(),
+    ))
+    .unwrap()
+    .to_data();
+
     let mut rng = rand::thread_rng();
 
     let x = Placeholder::<chars::x, Array1<f32>>::new();
@@ -53,33 +64,13 @@ fn main() {
         println!("i:{} loss:{}", n, loss);
     }
 
-    let test_t = MnistLabels::parse(&mut GzDecoder::new(
-        File::open("mnist-data/t10k-labels-idx1-ubyte.gz").unwrap(),
-    ))
-    .unwrap();
-
-    let test_x = MnistImages::parse(&mut GzDecoder::new(
-        File::open("mnist-data/t10k-images-idx3-ubyte.gz").unwrap(),
-    ))
-    .unwrap()
-    .to_data();
-
     let mut succ = 0;
 
     for i in 0..1000 {
         let x = test_x.index_axis(Axis(0), i);
         let t = test_t.labels[i];
 
-        let answer = affine2
-            .forward(hlist![field![chars::x, x.to_owned()]])
-            .0
-            .iter()
-            .enumerate()
-            .fold(
-                (0, 0.),
-                |(a, max), (i, &cur)| if cur > max { (i, cur) } else { (a, max) },
-            )
-            .0;
+        let answer = max_idx(affine2.forward(hlist![field![chars::x, x.to_owned()]]).0);
 
         if answer == t as usize {
             succ += 1;
@@ -87,6 +78,16 @@ fn main() {
     }
 
     println!("{}/1000", succ);
+}
+
+fn max_idx(arr: Array1<f32>) -> usize {
+    arr.iter()
+        .enumerate()
+        .fold(
+            (0, 0.),
+            |(a, max), (i, &cur)| if cur > max { (i, cur) } else { (a, max) },
+        )
+        .0
 }
 
 #[test]

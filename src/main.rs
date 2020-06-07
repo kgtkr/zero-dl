@@ -6,6 +6,77 @@ use zero_dl::functions::*;
 use zero_dl::mnist::{MnistImages, MnistLabels};
 use zero_dl::network::{Affine, AffineParams, Network, Relu};
 
+fn label_test() {
+    use frunk::field;
+    use frunk::hlist::Selector;
+    use frunk::hlist::{HCons, HList, HNil};
+    use frunk::indices::{Here, There};
+    use frunk::labelled::{chars, Field, LabelledGeneric, Transmogrifier};
+
+    pub trait Has<TargetKey, Index> {
+        type TargetValue;
+        type Remainder;
+        fn get(&self) -> &Self::TargetValue;
+    }
+    impl<K, V, Tail> Has<K, Here> for HCons<Field<K, V>, Tail> {
+        type TargetValue = V;
+        type Remainder = Tail;
+        fn get(&self) -> &Self::TargetValue {
+            &self.head.value
+        }
+    }
+    impl<Head, Tail, K, TailIndex> Has<K, There<TailIndex>> for HCons<Head, Tail>
+    where
+        Tail: Has<K, TailIndex>,
+    {
+        type TargetValue = <Tail as Has<K, TailIndex>>::TargetValue;
+        type Remainder = HCons<Head, <Tail as Has<K, TailIndex>>::Remainder>;
+        fn get(&self) -> &Self::TargetValue {
+            <Tail as Has<K, TailIndex>>::get(&self.tail)
+        }
+    }
+
+    #[derive(frunk::LabelledGeneric, Clone, Debug)]
+    struct Hoge {
+        x: i32,
+        y: i64,
+    }
+
+    let hoge = Hoge { x: 1, y: 1 };
+
+    let hoge_repr = LabelledGeneric::into(hoge);
+    let x = get_x(&hoge_repr);
+    let y = get_y(&hoge_repr);
+
+    fn get_x<I, T: Has<chars::x, I, TargetValue = i32>>(obj: &T) -> i32 {
+        *obj.get()
+    }
+
+    fn get_y<I, T: Has<chars::y, I, TargetValue = i64>>(obj: &T) -> i64 {
+        *obj.get()
+    }
+
+    fn set_x<Tail>(obj: Tail, x: i32) -> HCons<Field<chars::x, i32>, Tail> {
+        HCons {
+            head: field![chars::x, x],
+            tail: obj,
+        }
+    }
+
+    fn set_y<Tail>(obj: Tail, y: i64) -> HCons<Field<chars::y, i64>, Tail> {
+        HCons {
+            head: field![chars::y, y],
+            tail: obj,
+        }
+    }
+
+    let obj1 = set_y(set_x(HNil, x), y);
+    let obj2 = set_x(set_y(HNil, y), x);
+
+    let hoge1: Hoge = LabelledGeneric::from(obj1.transmogrify());
+    let hoge2: Hoge = LabelledGeneric::from(obj2.transmogrify());
+}
+
 fn main() {
     let train_t = MnistLabels::parse(&mut GzDecoder::new(
         File::open("mnist-data/train-labels-idx1-ubyte.gz").unwrap(),

@@ -1,6 +1,7 @@
 use crate::functions;
 use ndarray::prelude::*;
 use ndarray::Zip;
+use std::ops::AddAssign;
 
 pub fn softmax_batch(a: ArrayView2<f32>) -> Array2<f32> {
     let c = a.fold(0f32, |a, &b| a.max(b));
@@ -58,29 +59,27 @@ pub fn im2col(
     input_data: Array4<f32>,
     filter_h: usize,
     filter_w: usize,
-    stride_h: usize,
-    stride_w: usize,
-    pad_h: usize,
-    pad_w: usize,
+    stride: usize,
+    pad: usize,
 ) -> (Array2<f32>, usize, usize) {
     let (n, c, h, w) = input_data.dim();
 
-    let out_h = (h + 2 * pad_h - filter_h) / stride_h + 1;
-    let out_w = (w + 2 * pad_w - filter_w) / stride_w + 1;
+    let out_h = (h + 2 * pad - filter_h) / stride + 1;
+    let out_w = (w + 2 * pad - filter_w) / stride + 1;
 
-    // input_data.pad([(0, 0), (0, 0), (pad_h, pad_h), (pad_w, pad_w)])
+    // input_data.pad([(0, 0), (0, 0), (pad, pad), (pad, pad)])
     let mut img = Array::zeros((
         input_data.len_of(Axis(0)),
         input_data.len_of(Axis(1)),
-        input_data.len_of(Axis(2)) + pad_h * 2,
-        input_data.len_of(Axis(3)) + pad_w * 2,
+        input_data.len_of(Axis(2)) + pad * 2,
+        input_data.len_of(Axis(3)) + pad * 2,
     ));
 
     for i1 in 0..input_data.len_of(Axis(0)) {
         for i2 in 0..input_data.len_of(Axis(1)) {
             for i3 in 0..input_data.len_of(Axis(2)) {
                 for i4 in 0..input_data.len_of(Axis(3)) {
-                    img[(i1, i2, i3 + pad_h, i4 + pad_w)] = input_data[(i1, i2, i3, i4)];
+                    img[(i1, i2, i3 + pad, i4 + pad)] = input_data[(i1, i2, i3, i4)];
                 }
             }
         }
@@ -89,11 +88,11 @@ pub fn im2col(
     let mut col = Array::zeros((n, c, filter_h, filter_w, out_h, out_w));
 
     for y in 0..filter_h {
-        let y_max = y + stride_h * out_h;
+        let y_max = y + stride * out_h;
         for x in 0..filter_w {
-            let x_max = x + stride_w * out_w;
+            let x_max = x + stride * out_w;
             col.slice_mut(s![.., .., y, x, .., ..])
-                .assign(&img.slice(s![.., .., y..y_max;stride_h, x..x_max;stride_w]));
+                .assign(&img.slice(s![.., .., y..y_max;stride, x..x_max;stride]));
         }
     }
 
@@ -105,6 +104,35 @@ pub fn im2col(
         .into_shape((n * out_h * out_w, s2))
         .unwrap();
     (col, out_h, out_w)
+}
+
+pub fn col2im(
+    col: Array2<f32>,
+    input_shape: (usize, usize, usize, usize),
+    filter_h: usize,
+    filter_w: usize,
+    stride: usize,
+    pad: usize,
+) -> Array4<f32> {
+    let (n, c, h, w) = input_shape;
+    let out_h = (h + 2 * pad - filter_h) / stride + 1;
+    let out_w = (w + 2 * pad - filter_w) / stride + 1;
+    let col = col
+        .into_shape((n, out_h, out_w, c, filter_h, filter_w))
+        .unwrap()
+        .permuted_axes([0, 3, 4, 5, 1, 2]);
+
+    let mut img = Array::zeros((n, c, h + 2 * pad + stride - 1, w + 2 * pad + stride - 1));
+    for y in 0..filter_h {
+        let y_max = y + stride * out_h;
+        for x in 0..filter_w {
+            let x_max = x + stride * out_w;
+            img.slice_mut(s![..,..,y..y_max;stride, x..x_max;stride])
+                .add_assign(&col.slice(s![.., .., y, x, .., ..]));
+        }
+    }
+
+    img.slice(s![.., .., pad..h + pad, pad..w + pad]).to_owned()
 }
 
 #[test]

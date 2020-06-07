@@ -24,11 +24,6 @@ impl NetworkParams {
     }
 }
 
-pub fn numerical_diff(f: impl Fn(f32) -> f32, x: f32) -> f32 {
-    let h = 1e-4;
-    (f(x + h) - f(x - h)) / (2. * h)
-}
-
 pub trait Optimizer {
     // TODO: これ型クラス作ってOutputの微分値みたいな関連型でまとめたい
     type Output;
@@ -190,17 +185,17 @@ impl NetworkVar for AffineParamsValue {
     }
 }
 
-pub struct AffineOptimizer<XL, ParamsL> {
-    pub x_layer: XL,
-    pub params_layer: ParamsL,
+pub struct AffineOptimizer<XOpz, ParamsOpz> {
+    pub x_optimizer: XOpz,
+    pub params_optimizer: ParamsOpz,
     pub params: AffineParams,
     pub x: Array1<f32>,
 }
 
 impl<
-        XL: Optimizer<OutputGrad = Array1<f32>>,
-        ParamsL: Optimizer<OutputGrad = AffineParamsValue>,
-    > Optimizer for AffineOptimizer<XL, ParamsL>
+        XOpz: Optimizer<OutputGrad = Array1<f32>>,
+        ParamsOpz: Optimizer<OutputGrad = AffineParamsValue>,
+    > Optimizer for AffineOptimizer<XOpz, ParamsOpz>
 {
     type OutputGrad = Array1<f32>;
     type Output = Array1<f32>;
@@ -216,8 +211,8 @@ impl<
             .dot(&dout.broadcast((1, dout.len_of(Axis(0)))).unwrap());
         let db = dout;
 
-        self.x_layer.optimize(dx);
-        self.params_layer.optimize(AffineParamsValue {
+        self.x_optimizer.optimize(dx);
+        self.params_optimizer.optimize(AffineParamsValue {
             weight: dw,
             bias: db,
         });
@@ -253,8 +248,8 @@ where
 
     fn forward(&self, placeholders: Self::Placeholders) -> (Self::Output, Self::Optimizer) {
         let (x_placeholders, params_placeholders) = ConcatAndSplit::split(placeholders);
-        let (x, x_layer) = self.x_layer.forward(x_placeholders);
-        let (params, params_layer) = self.params_layer.forward(params_placeholders);
+        let (x, x_optimizer) = self.x_layer.forward(x_placeholders);
+        let (params, params_optimizer) = self.params_layer.forward(params_placeholders);
 
         let y = params.affine_forward(&x);
         (
@@ -262,24 +257,24 @@ where
             AffineOptimizer {
                 params,
                 x,
-                x_layer,
-                params_layer,
+                x_optimizer,
+                params_optimizer,
             },
         )
     }
 }
 
-pub struct ReluOptimizer<XL> {
+pub struct ReluOptimizer<XOpz> {
     pub x: Array1<f32>,
-    pub x_layer: XL,
+    pub x_optimizer: XOpz,
 }
 
-impl<XL> Optimizer for ReluOptimizer<XL>
+impl<XOpz> Optimizer for ReluOptimizer<XOpz>
 where
-    XL: Optimizer<OutputGrad = Array1<f32>>,
+    XOpz: Optimizer<OutputGrad = Array1<f32>>,
 {
     type Output = Array1<f32>;
-    type OutputGrad = XL::OutputGrad;
+    type OutputGrad = XOpz::OutputGrad;
 
     fn optimize(self, mut dout: Self::OutputGrad) {
         Zip::from(&mut dout).and(&self.x).apply(|dout_x, &x| {
@@ -288,7 +283,7 @@ where
             }
         });
 
-        self.x_layer.optimize(dout);
+        self.x_optimizer.optimize(dout);
     }
 }
 
@@ -312,23 +307,23 @@ where
     type Placeholders = XL::Placeholders;
 
     fn forward(&self, placeholders: Self::Placeholders) -> (Self::Output, Self::Optimizer) {
-        let (x, x_layer) = self.x_layer.forward(placeholders);
+        let (x, x_optimizer) = self.x_layer.forward(placeholders);
         let y = x.mapv(|x| x.max(0.));
-        (y, ReluOptimizer { x, x_layer })
+        (y, ReluOptimizer { x, x_optimizer })
     }
 }
 
-pub struct SoftmaxWithLossOptimizer<XL, TL> {
+pub struct SoftmaxWithLossOptimizer<XOpz, TOpz> {
     pub y: Array1<f32>,
     pub t: Array1<f32>,
-    pub x_layer: XL,
-    pub t_layer: TL,
+    pub x_optimizer: XOpz,
+    pub t_optimizer: TOpz,
 }
 
-impl<XL, TL> Optimizer for SoftmaxWithLossOptimizer<XL, TL>
+impl<XOpz, TOpz> Optimizer for SoftmaxWithLossOptimizer<XOpz, TOpz>
 where
-    XL: Optimizer<OutputGrad = Array1<f32>>,
-    TL: Optimizer<OutputGrad = Array1<f32>>,
+    XOpz: Optimizer<OutputGrad = Array1<f32>>,
+    TOpz: Optimizer<OutputGrad = Array1<f32>>,
 {
     type OutputGrad = f32;
     type Output = f32;
@@ -336,7 +331,7 @@ where
     fn optimize(self, dout: f32) {
         let d = &self.y - &self.t;
 
-        self.x_layer.optimize(d);
+        self.x_optimizer.optimize(d);
         // TODO: 本当はtの微分も考えるべきかも？
     }
 }
@@ -366,8 +361,8 @@ where
     fn forward(&self, placeholders: Self::Placeholders) -> (Self::Output, Self::Optimizer) {
         let (x_placeholders, t_placeholders) = ConcatAndSplit::split(placeholders);
 
-        let (x, x_layer) = self.x_layer.forward(x_placeholders);
-        let (t, t_layer) = self.t_layer.forward(t_placeholders);
+        let (x, x_optimizer) = self.x_layer.forward(x_placeholders);
+        let (t, t_optimizer) = self.t_layer.forward(t_placeholders);
 
         let y = arr_functions::softmax_arr1(x.view());
         let loss = arr_functions::cross_entropy_error(y.view(), t.view());
@@ -377,8 +372,8 @@ where
             SoftmaxWithLossOptimizer {
                 t,
                 y,
-                x_layer,
-                t_layer,
+                x_optimizer,
+                t_optimizer,
             },
         )
     }

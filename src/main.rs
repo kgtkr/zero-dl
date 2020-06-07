@@ -73,11 +73,11 @@ fn main() {
         let i = rng.gen_range(0, train_x.len_of(Axis(0)));
         let x = train_x.index_axis(Axis(0), i);
         let t = train_t.index_axis(Axis(0), i);
-        let (loss, ba) = softmax_with_loss.forward(hlist![
+        let (loss, optimizer) = softmax_with_loss.forward(hlist![
             field![chars::x, x.to_owned()],
             field![chars::t, t.to_owned()]
         ]);
-        ba.optimize(1.);
+        optimizer.optimize(1.);
 
         if n % batch_size == batch_size - 1 {
             println!("i:{} loss:{}", n, loss);

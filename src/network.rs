@@ -99,9 +99,8 @@ pub fn numerical_diff(f: impl Fn(f32) -> f32, x: f32) -> f32 {
 pub trait LayerBackward<Placeholders: LabelledGeneric> {
     type Output;
     type OutputGrad;
-    type Grads;
 
-    fn backward(&self, dout: Self::OutputGrad, placeholders: &Placeholders::Repr) -> Self::Grads;
+    fn backward(&self, dout: Self::OutputGrad, placeholders: &Placeholders::Repr);
 }
 
 pub trait Layer<Placeholders: LabelledGeneric> {
@@ -132,9 +131,8 @@ impl<V: NetworkVar, Placeholders: LabelledGeneric> LayerBackward<Placeholders>
 {
     type Output = V::MutableRef;
     type OutputGrad = V;
-    type Grads = ();
 
-    fn backward(&self, dout: Self::OutputGrad, placeholders: &Placeholders::Repr) -> () {
+    fn backward(&self, dout: Self::OutputGrad, placeholders: &Placeholders::Repr) {
         V::optimize(&self.value, &dout, 0.1);
     }
 }
@@ -172,11 +170,8 @@ impl<K, I, V, Placeholders: LabelledGeneric> LayerBackward<Placeholders>
 {
     type OutputGrad = V;
     type Output = V;
-    type Grads = HNil;
 
-    fn backward(&self, dout: Self::Output, placeholders: &Placeholders::Repr) -> Self::Grads {
-        HNil
-    }
+    fn backward(&self, dout: Self::Output, placeholders: &Placeholders::Repr) {}
 }
 
 #[derive(Debug, Clone)]
@@ -251,16 +246,11 @@ impl<
         XL: LayerBackward<Placeholders, OutputGrad = Array1<f32>>,
         ParamsL: LayerBackward<Placeholders, OutputGrad = AffineParamsValue>,
     > LayerBackward<Placeholders> for AffineBackward<XL, ParamsL>
-where
-    XL::Grads: Add<<ParamsL as LayerBackward<Placeholders>>::Grads>,
 {
     type OutputGrad = Array1<f32>;
     type Output = Array1<f32>;
-    type Grads = <<XL as LayerBackward<Placeholders>>::Grads as Add<
-        <ParamsL as LayerBackward<Placeholders>>::Grads,
-    >>::Output;
 
-    fn backward(&self, dout: Self::OutputGrad, placeholders: &Placeholders::Repr) -> Self::Grads {
+    fn backward(&self, dout: Self::OutputGrad, placeholders: &Placeholders::Repr) {
         let dx = self.params.affine_backward(&dout);
 
         let dw = self
@@ -270,15 +260,6 @@ where
             .t()
             .dot(&dout.broadcast((1, dout.len_of(Axis(0)))).unwrap());
         let db = dout;
-
-        self.x_layer.backward(dx, placeholders)
-            + self.params_layer.backward(
-                AffineParamsValue {
-                    weight: dw,
-                    bias: db,
-                },
-                placeholders,
-            )
     }
 }
 
@@ -336,20 +317,15 @@ where
 {
     type Output = Array1<f32>;
     type OutputGrad = XL::OutputGrad;
-    type Grads = XL::Grads;
 
-    fn backward(
-        &self,
-        mut dout: Self::OutputGrad,
-        placeholders: &Placeholders::Repr,
-    ) -> Self::Grads {
+    fn backward(&self, mut dout: Self::OutputGrad, placeholders: &Placeholders::Repr) {
         Zip::from(&mut dout).and(&self.x).apply(|dout_x, &x| {
             if x <= 0. {
                 *dout_x = 0.;
             }
         });
 
-        self.x_layer.backward(dout, placeholders)
+        self.x_layer.backward(dout, placeholders);
     }
 }
 
@@ -390,19 +366,15 @@ impl<XL, TL, Placeholders: LabelledGeneric> LayerBackward<Placeholders>
 where
     XL: LayerBackward<Placeholders, OutputGrad = Array1<f32>>,
     TL: LayerBackward<Placeholders, OutputGrad = Array1<f32>>,
-    XL::Grads: Add<<TL as LayerBackward<Placeholders>>::Grads>,
 {
     type OutputGrad = f32;
     type Output = f32;
-    type Grads = <<XL as LayerBackward<Placeholders>>::Grads as Add<
-        <TL as LayerBackward<Placeholders>>::Grads,
-    >>::Output;
 
-    fn backward(&self, dout: f32, placeholders: &Placeholders::Repr) -> Self::Grads {
+    fn backward(&self, dout: f32, placeholders: &Placeholders::Repr) {
         let d = &self.y - &self.t;
 
-        self.x_layer.backward(d.clone(), placeholders)
-            + self.t_layer.backward(d.clone(), placeholders)
+        self.x_layer.backward(d, placeholders);
+        // TODO: 本当はtの微分も考えるべきかも？
     }
 }
 

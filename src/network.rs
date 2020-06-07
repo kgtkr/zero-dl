@@ -1,7 +1,7 @@
 use crate::arr_functions;
 use crate::hlist_extra::Has;
 use frunk::labelled::Field;
-use frunk::labelled::{chars, Field, LabelledGeneric, Transmogrifier};
+use frunk::labelled::{chars, LabelledGeneric, Transmogrifier};
 use frunk::{field, HCons, HNil};
 use ndarray::prelude::*;
 use ndarray::Zip;
@@ -27,45 +27,22 @@ pub struct Network<L, LastL> {
 
 impl<L, LastL> Network<L, LastL>
 where
-    L: Layer<PredictPlaceholders, PredictNetworkVariables, Output = Array1<f32>>,
-    LastL: Layer<LossPlaceholders, LossNetworkVariables, Output = f32>,
+    L: Layer<PredictPlaceholders, Output = Array1<f32>>,
+    LastL: Layer<LossPlaceholders, Output = f32>,
+    LastL::Backward: LayerBackward<LossPlaceholders, OutputGrad = f32>,
 {
     pub fn initialize(layers: L, last_layer: LastL) -> Network<L, LastL> {
         Network { layers, last_layer }
     }
 
-    pub fn predict(
-        &self,
-        x: Array1<f32>,
-    ) -> (
-        Array1<f32>,
-        impl LayerBackward<PredictPlaceholders, PredictNetworkVariables, Output = Array1<f32>>,
-    ) {
-        self.layers.forward(x, &(), &())
+    pub fn predict(&self, x: Array1<f32>) -> (Array1<f32>, L::Backward) {
+        self.layers
+            .forward(&LabelledGeneric::into(PredictPlaceholders {}))
     }
 
-    pub fn loss(
-        &mut self,
-        x: Array1<f32>,
-        t: Array1<f32>,
-    ) -> (
-        f32,
-        impl LayerBackward<(), (), Input = Array1<f32>, Output = f32>,
-    ) {
-        let (y, ba1) = self.layers.forward(x, &(), &());
-        self.last_layer.t = t;
-        let (loss, ba2) = self.last_layer.forward(y, &(), &());
-        (loss, (ba1, ba2))
-    }
-
-    pub fn gradient(&mut self, x: Array1<f32>, t: Array1<f32>) -> Vec<AffineParamsValue> {
-        let (_, ba) = self.loss(x, t);
-
-        let mut grads = Vec::new();
-        let dout = ba.backward(&mut grads, 1., &(), &());
-        grads.reverse();
-
-        grads
+    pub fn loss(&mut self, x: Array1<f32>, t: Array1<f32>) -> (f32, LastL::Backward) {
+        self.last_layer
+            .forward(&LabelledGeneric::into(PredictPlaceholders {}))
     }
 
     pub fn learning(
@@ -84,10 +61,8 @@ where
                 let i = rng.gen_range(0, x_train.len_of(Axis(0)));
                 let x = x_train.index_axis(Axis(0), i);
                 let t = t_train.index_axis(Axis(0), i);
-                let grads = self.gradient(x.to_owned(), t.to_owned());
-                for (i, grad) in grads.into_iter().enumerate() {
-                    params[i].optimize(learning_rate, &grad);
-                }
+                let (_, ba) = self.loss(x.to_owned(), t.to_owned());
+                ba.backward(1., &LabelledGeneric::into(PredictPlaceholders {}));
             }
 
             let i = rng.gen_range(0, x_train.len_of(Axis(0)));
@@ -143,7 +118,7 @@ pub struct AffineParamsValue {
 }
 
 pub trait NetworkVar {
-    type MutableRef;
+    type MutableRef: Clone;
     fn optimize(target: &Self::MutableRef, grad: &Self, learning_rate: f32);
 }
 
@@ -157,10 +132,10 @@ impl<V: NetworkVar, Placeholders: LabelledGeneric> LayerBackward<Placeholders>
 {
     type Output = V::MutableRef;
     type OutputGrad = V;
-    type Grads = V;
+    type Grads = ();
 
-    fn backward(&self, dout: Self::OutputGrad) -> Self::Grads {
-        dout
+    fn backward(&self, dout: Self::OutputGrad, placeholders: &Placeholders::Repr) -> () {
+        V::optimize(&self.value, &dout, 0.1);
     }
 }
 
@@ -178,7 +153,12 @@ where
     type Backward = VariableBackend<V>;
 
     fn forward(&self, placeholders: &Placeholders::Repr) -> (Self::Output, Self::Backward) {
-        (self.value, VariableBackend { value: self.value })
+        (
+            self.value.clone(),
+            VariableBackend {
+                value: self.value.clone(),
+            },
+        )
     }
 }
 
@@ -194,7 +174,7 @@ impl<K, I, V, Placeholders: LabelledGeneric> LayerBackward<Placeholders>
     type Output = V;
     type Grads = HNil;
 
-    fn backward(&self, dout: Self::Output, placeholders: &Placeholders) -> Self::Grads {
+    fn backward(&self, dout: Self::Output, placeholders: &Placeholders::Repr) -> Self::Grads {
         HNil
     }
 }
@@ -418,12 +398,7 @@ where
         <TL as LayerBackward<Placeholders>>::Grads,
     >>::Output;
 
-    fn backward(
-        &self,
-        grads: &mut Vec<AffineParamsValue>,
-        dout: f32,
-        placeholders: &Placeholders::Repr,
-    ) -> Self::Grads {
+    fn backward(&self, dout: f32, placeholders: &Placeholders::Repr) -> Self::Grads {
         let d = &self.y - &self.t;
 
         self.x_layer.backward(d.clone(), placeholders)

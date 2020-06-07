@@ -1,6 +1,8 @@
 use crate::arr_functions;
 use crate::hlist_extra::Has;
-use frunk::labelled::LabelledGeneric;
+use frunk::hlist::Sculptor;
+use frunk::labelled::{Field, LabelledGeneric, Transmogrifier};
+use frunk::{HCons, HNil};
 use ndarray::prelude::*;
 use ndarray::Zip;
 use ndarray_rand::rand_distr::Normal;
@@ -16,43 +18,50 @@ pub struct PredictPlaceholders {
     x: Array1<f32>,
 }
 
+pub type PredictPlaceholdersRepr = <PredictPlaceholders as LabelledGeneric>::Repr;
+
 #[derive(frunk::LabelledGeneric, Clone, Debug)]
 pub struct LossPlaceholders {
     x: Array1<f32>,
     t: Array1<f32>,
 }
 
-pub struct Network<L, LastL> {
+pub type LossPlaceholdersRepr = <LossPlaceholders as LabelledGeneric>::Repr;
+
+pub struct Network<L, LastL, LTransmogrifyIndexIndices, LastLTransmogrifyIndexIndices> {
     pub layers: L,
     pub last_layer: LastL,
+    pub phantom: PhantomData<(LTransmogrifyIndexIndices, LastLTransmogrifyIndexIndices)>,
 }
 
-impl<L, LastL> Network<L, LastL>
+impl<L, LastL, LTransmogrifyIndexIndices, LastLTransmogrifyIndexIndices>
+    Network<L, LastL, LTransmogrifyIndexIndices, LastLTransmogrifyIndexIndices>
 where
-    L: Layer<PredictPlaceholders, Output = Array1<f32>>,
-    LastL: Layer<LossPlaceholders, Output = f32>,
+    L: Layer<Output = Array1<f32>, Placeholders = PredictPlaceholdersRepr>,
+    LastL: Layer<Output = f32, Placeholders = LossPlaceholdersRepr>,
+    L::Placeholders: Transmogrifier<PredictPlaceholdersRepr, LTransmogrifyIndexIndices>,
+    LastL::Placeholders: Transmogrifier<LossPlaceholdersRepr, LastLTransmogrifyIndexIndices>,
     LastL::Backward: LayerBackward<OutputGrad = f32>,
 {
-    pub fn initialize(layers: L, last_layer: LastL) -> Network<L, LastL> {
-        Network { layers, last_layer }
+    pub fn initialize(layers: L, last_layer: LastL) -> Self {
+        Network {
+            layers,
+            last_layer,
+            phantom: PhantomData,
+        }
     }
 
     pub fn predict(&self, x: Array1<f32>) -> (Array1<f32>, L::Backward) {
         self.layers
-            .forward(&LabelledGeneric::into(PredictPlaceholders { x }))
+            .forward(LabelledGeneric::into(PredictPlaceholders { x }))
     }
 
     pub fn loss(&mut self, x: Array1<f32>, t: Array1<f32>) -> (f32, LastL::Backward) {
         self.last_layer
-            .forward(&LabelledGeneric::into(LossPlaceholders { x, t }))
+            .forward(LabelledGeneric::into(LossPlaceholders { x, t }))
     }
 
-    pub fn learning(
-        &mut self,
-        params: &Vec<AffineParams>,
-        x_train: Array2<f32>,
-        t_train: Array2<f32>,
-    ) {
+    pub fn learning(&mut self, x_train: Array2<f32>, t_train: Array2<f32>) {
         let iters_num = 100;
         let batch_size = 100;
         let learning_rate = 0.1;
@@ -107,11 +116,12 @@ pub trait LayerBackward {
     fn backward(&self, dout: Self::OutputGrad);
 }
 
-pub trait Layer<Placeholders: LabelledGeneric> {
+pub trait Layer {
     type Output;
     type Backward: LayerBackward;
+    type Placeholders;
 
-    fn forward(&self, placeholders: &Placeholders::Repr) -> (Self::Output, Self::Backward);
+    fn forward(&self, placeholders: Self::Placeholders) -> (Self::Output, Self::Backward);
 }
 
 #[derive(Debug)]
@@ -150,7 +160,7 @@ impl<V: NetworkVar> Variable<V> {
     }
 }
 
-impl<V: NetworkVar, Placeholders: LabelledGeneric> Layer<Placeholders> for Variable<V>
+impl<V: NetworkVar> Layer for Variable<V>
 where
     V: NetworkVar,
 {
@@ -158,7 +168,9 @@ where
 
     type Backward = VariableBackend<V>;
 
-    fn forward(&self, placeholders: &Placeholders::Repr) -> (Self::Output, Self::Backward) {
+    type Placeholders = HNil;
+
+    fn forward(&self, placeholders: Self::Placeholders) -> (Self::Output, Self::Backward) {
         (
             self.value.clone(),
             VariableBackend {
@@ -169,11 +181,11 @@ where
 }
 
 #[derive(Debug, Clone)]
-pub struct PlaceholderBackend<K, I, V> {
-    pub phantom: PhantomData<(K, V, I)>,
+pub struct PlaceholderBackend<K, V> {
+    pub phantom: PhantomData<(K, V)>,
 }
 
-impl<K, I, V> LayerBackward for PlaceholderBackend<K, I, V> {
+impl<K, V> LayerBackward for PlaceholderBackend<K, V> {
     type OutputGrad = V;
     type Output = V;
 
@@ -181,22 +193,20 @@ impl<K, I, V> LayerBackward for PlaceholderBackend<K, I, V> {
 }
 
 #[derive(Debug, Clone)]
-pub struct Placeholder<K, I, V> {
-    pub phantom: PhantomData<(K, V, I)>,
+pub struct Placeholder<K, V> {
+    pub phantom: PhantomData<(K, V)>,
 }
 
-impl<K, I, V, Placeholders: LabelledGeneric> Layer<Placeholders> for Placeholder<K, V, I>
-where
-    Placeholders: LabelledGeneric,
-    Placeholders::Repr: Has<K, I, TargetValue = V>,
-{
+impl<K, V> Layer for Placeholder<K, V> {
     type Output = V;
 
-    type Backward = PlaceholderBackend<K, I, V>;
+    type Backward = PlaceholderBackend<K, V>;
 
-    fn forward(&self, placeholders: &Placeholders::Repr) -> (Self::Output, Self::Backward) {
+    type Placeholders = HCons<Field<K, V>, HNil>;
+
+    fn forward(&self, placeholders: Self::Placeholders) -> (Self::Output, Self::Backward) {
         (
-            placeholders.get(),
+            placeholders.head.value,
             PlaceholderBackend {
                 phantom: PhantomData,
             },
@@ -268,34 +278,40 @@ impl<
     }
 }
 
-pub struct Affine<XL, ParamsL> {
+pub struct Affine<XL, ParamsL, Placeholders, Indices> {
     pub x_layer: XL,
     pub params_layer: ParamsL,
+    pub phantom: PhantomData<(Placeholders, Indices)>,
 }
 
-impl<XL, ParamsL> Affine<XL, ParamsL> {
+impl<XL, ParamsL, Placeholders, Indices> Affine<XL, ParamsL, Placeholders, Indices> {
     pub fn new(x_layer: XL, params_layer: ParamsL) -> Self {
         Affine {
             x_layer,
             params_layer,
+            phantom: PhantomData,
         }
     }
 }
 
-impl<XL, ParamsL, Placeholders: LabelledGeneric> Layer<Placeholders> for Affine<XL, ParamsL>
+impl<XL, ParamsL, Placeholders, Indices> Layer for Affine<XL, ParamsL, Placeholders, Indices>
 where
-    XL: Layer<Placeholders, Output = Array1<f32>>,
-    ParamsL: Layer<Placeholders, Output = AffineParams>,
+    XL: Layer<Output = Array1<f32>>,
+    ParamsL: Layer<Output = AffineParams>,
     XL::Backward: LayerBackward,
     ParamsL::Backward: LayerBackward,
     AffineBackward<XL::Backward, ParamsL::Backward>: LayerBackward<Output = Array1<f32>>,
+    Placeholders: Sculptor<XL::Placeholders, Indices, Remainder = ParamsL::Placeholders>,
 {
     type Output = Array1<f32>;
     type Backward = AffineBackward<XL::Backward, ParamsL::Backward>;
+    type Placeholders = Placeholders;
 
-    fn forward(&self, placeholders: &Placeholders::Repr) -> (Self::Output, Self::Backward) {
-        let (x, x_layer) = self.x_layer.forward(placeholders);
-        let (params, params_layer) = self.params_layer.forward(placeholders);
+    fn forward(&self, placeholders: Self::Placeholders) -> (Self::Output, Self::Backward) {
+        let (x_placeholders, params_placeholders) =
+            Sculptor::<XL::Placeholders, Indices>::sculpt(placeholders);
+        let (x, x_layer) = self.x_layer.forward(x_placeholders);
+        let (params, params_layer) = self.params_layer.forward(params_placeholders);
 
         let y = params.affine_forward(&x);
         (
@@ -343,15 +359,16 @@ impl<XL> Relu<XL> {
     }
 }
 
-impl<XL, Placeholders: LabelledGeneric> Layer<Placeholders> for Relu<XL>
+impl<XL> Layer for Relu<XL>
 where
-    XL: Layer<Placeholders, Output = Array1<f32>>,
+    XL: Layer<Output = Array1<f32>>,
     ReluBackward<XL::Backward>: LayerBackward<Output = Array1<f32>>,
 {
     type Output = Array1<f32>;
     type Backward = ReluBackward<XL::Backward>;
+    type Placeholders = XL::Placeholders;
 
-    fn forward(&self, placeholders: &Placeholders::Repr) -> (Self::Output, Self::Backward) {
+    fn forward(&self, placeholders: Self::Placeholders) -> (Self::Output, Self::Backward) {
         let (x, x_layer) = self.x_layer.forward(placeholders);
         let y = x.mapv(|x| x.max(0.));
         (y, ReluBackward { x, x_layer })
@@ -381,29 +398,40 @@ where
     }
 }
 
-pub struct SoftmaxWithLoss<XL, TL> {
+pub struct SoftmaxWithLoss<XL, TL, Placeholders, Indices> {
     pub x_layer: XL,
     pub t_layer: TL,
+    pub phantom: PhantomData<(Placeholders, Indices)>,
 }
 
-impl<XL, TL> SoftmaxWithLoss<XL, TL> {
+impl<XL, TL, Placeholders, Indices> SoftmaxWithLoss<XL, TL, Placeholders, Indices> {
     pub fn new(x_layer: XL, t_layer: TL) -> Self {
-        SoftmaxWithLoss { x_layer, t_layer }
+        SoftmaxWithLoss {
+            x_layer,
+            t_layer,
+            phantom: PhantomData,
+        }
     }
 }
 
-impl<XL, TL, Placeholders: LabelledGeneric> Layer<Placeholders> for SoftmaxWithLoss<XL, TL>
+impl<XL, TL, Placeholders, Indices> Layer for SoftmaxWithLoss<XL, TL, Placeholders, Indices>
 where
-    XL: Layer<Placeholders, Output = Array1<f32>>,
-    TL: Layer<Placeholders, Output = Array1<f32>>,
+    XL: Layer<Output = Array1<f32>>,
+    TL: Layer<Output = Array1<f32>>,
     SoftmaxWithLossBackward<XL::Backward, TL::Backward>: LayerBackward<Output = f32>,
+    AffineBackward<XL::Backward, XL::Backward>: LayerBackward<Output = Array1<f32>>,
+    Placeholders: Sculptor<XL::Placeholders, Indices, Remainder = TL::Placeholders>,
 {
     type Output = f32;
     type Backward = SoftmaxWithLossBackward<XL::Backward, TL::Backward>;
+    type Placeholders = Placeholders;
 
-    fn forward(&self, placeholders: &Placeholders::Repr) -> (Self::Output, Self::Backward) {
-        let (x, x_layer) = self.x_layer.forward(placeholders);
-        let (t, t_layer) = self.t_layer.forward(placeholders);
+    fn forward(&self, placeholders: Self::Placeholders) -> (Self::Output, Self::Backward) {
+        let (x_placeholders, t_placeholders) =
+            Sculptor::<XL::Placeholders, Indices>::sculpt(placeholders);
+
+        let (x, x_layer) = self.x_layer.forward(x_placeholders);
+        let (t, t_layer) = self.t_layer.forward(t_placeholders);
 
         let y = arr_functions::softmax_arr1(x.view());
         let loss = arr_functions::cross_entropy_error(y.view(), t.view());

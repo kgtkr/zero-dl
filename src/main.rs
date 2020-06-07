@@ -13,6 +13,28 @@ use zero_dl::network::{
     PredictPlaceholders, Relu, SoftmaxWithLoss, Variable,
 };
 
+macro_rules! layers {
+    ($x: expr,[$prev_n: expr, $n: expr, $next_n: expr, $( $rest: expr, ) *]) => {
+        {
+            let params = Variable::new(AffineParams::initialize($prev_n, $n));
+            let affine = Affine::new($x, params);
+            let relu = Relu::new(affine);
+
+            layers!(relu, [$n, $next_n, $($rest,)*])
+        }
+    };
+
+    ($x: expr, [$prev_n: expr, $n: expr,] ) => {
+        {
+            let params = Variable::new(AffineParams::initialize($prev_n, $n));
+            let affine = Affine::new($x, params);
+
+            affine
+        }
+    };
+
+}
+
 fn main() {
     let train_t = MnistLabels::parse(&mut GzDecoder::new(
         File::open("mnist-data/train-labels-idx1-ubyte.gz").unwrap(),
@@ -42,15 +64,10 @@ fn main() {
     let x = Placeholder::<chars::x, Array1<f32>>::new();
     let t = Placeholder::<chars::t, Array1<f32>>::new();
 
-    let params1 = Variable::new(AffineParams::initialize(784, 1000));
-    let affine1 = Affine::new(&x, &params1);
-    let relu1 = Relu::new(&affine1);
+    let affine = layers!(&x, [784, 1000, 10,]);
+    let softmax_with_loss = SoftmaxWithLoss::new(&affine, &t);
 
-    let params2 = Variable::new(AffineParams::initialize(1000, 10));
-    let affine2 = Affine::new(&relu1, &params2);
-    let softmax_with_loss = SoftmaxWithLoss::new(&affine2, &t);
-
-    let iters_num = 10;
+    let iters_num = 1000;
     let batch_size = 1000;
 
     for n in 0..iters_num * batch_size {
@@ -73,7 +90,7 @@ fn main() {
             .axis_iter(Axis(0))
             .zip(test_t.labels.iter())
             .fold((0, 0), |(ac, per), (x, &t)| {
-                let y = max_idx(affine2.forward(hlist![field![chars::x, x.to_owned()]]).0);
+                let y = max_idx(affine.forward(hlist![field![chars::x, x.to_owned()]]).0);
 
                 (ac + if y == t as usize { 1 } else { 0 }, per + 1)
             });

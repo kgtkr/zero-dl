@@ -82,17 +82,10 @@ fn main() {
         println!("i:{} loss:{}", n, loss);
     }
 
-    let res = Zip::from(
-        &affine
-            .forward(hlist![field![chars::x, test_x]])
-            .0
-            .map_axis(Axis(1), |x| max_idx(x)),
-    )
-    .and(&test_t.labels.mapv(|t| t as usize))
-    .apply_collect(|x, y| if x == y { 1 } else { 0 });
-
-    let per = res.len_of(Axis(0));
-    let ac = res.sum();
+    let (ac, per) = ac_per(
+        &affine.forward(hlist![field![chars::x, test_x]]).0,
+        &test_t.labels,
+    );
 
     println!("{}/{}", ac, per);
 }
@@ -105,4 +98,14 @@ fn max_idx(arr: ArrayView1<f32>) -> usize {
             |(a, max), (i, &cur)| if cur > max { (i, cur) } else { (a, max) },
         )
         .0
+}
+
+fn ac_per(x: &Array2<f32>, t: &Array1<u8>) -> (usize, usize) {
+    let res = Zip::from(&x.map_axis(Axis(1), |x| max_idx(x)))
+        .and(&t.mapv(|t| t as usize))
+        .apply_collect(|x, y| if x == y { 1 } else { 0 });
+
+    let per = res.len_of(Axis(0));
+    let ac = res.sum();
+    (ac, per)
 }

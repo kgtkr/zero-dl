@@ -1,13 +1,12 @@
 use crate::arr_functions;
 use crate::hlist_extra::ConcatAndSplit;
 use crate::layer::{Layer, LayerOutput, Optimizer};
-use frunk::labelled::{Field, LabelledGeneric, Transmogrifier};
+use frunk::labelled::Field;
 use frunk::{HCons, HNil};
 use ndarray::prelude::*;
 use ndarray::Zip;
 use ndarray_rand::rand_distr::Normal;
 use ndarray_rand::RandomExt;
-use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::marker::PhantomData;
 use std::sync::Arc;

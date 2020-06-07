@@ -1,5 +1,5 @@
 use flate2::read::GzDecoder;
-use frunk::labelled::{chars, Transmogrifier};
+use frunk::labelled::chars;
 use frunk::{field, hlist};
 use ndarray::prelude::*;
 use rand::prelude::*;

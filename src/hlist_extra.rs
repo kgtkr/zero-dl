@@ -1,8 +1,4 @@
-use frunk::field;
-use frunk::hlist::Selector;
 use frunk::hlist::{HCons, HList, HNil};
-use frunk::indices::{Here, There};
-use frunk::labelled::{chars, Field, LabelledGeneric, Transmogrifier};
 
 pub trait ConcatAndSplit<RHS>: Sized {
     type Output;

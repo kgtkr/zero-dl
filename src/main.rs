@@ -68,6 +68,7 @@ fn main() {
 
     let iters_num = 100;
     let batch_size = 100;
+    let learning_rate = 0.1;
 
     for n in 0..iters_num * batch_size {
         let i = rng.gen_range(0, train_x.len_of(Axis(0)));
@@ -77,7 +78,7 @@ fn main() {
             field![chars::x, x.to_owned()],
             field![chars::t, t.to_owned()]
         ]);
-        optimizer.optimize(1.);
+        optimizer.optimize(1., learning_rate);
 
         if n % batch_size == batch_size - 1 {
             println!("i:{} loss:{}", n, loss);

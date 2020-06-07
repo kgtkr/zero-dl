@@ -32,7 +32,7 @@ pub trait Optimizer {
     // TODO: これ型クラス作ってOutputの微分値みたいな関連型でまとめたい
     type Output: LayerOutput;
 
-    fn optimize(self, dout: <Self::Output as LayerOutput>::Grad);
+    fn optimize(self, dout: <Self::Output as LayerOutput>::Grad, learning_rate: f32);
 }
 
 pub trait Layer {
@@ -71,8 +71,8 @@ pub struct VariableOptimizer<V: NetworkVar> {
 impl<V: NetworkVar> Optimizer for VariableOptimizer<V> {
     type Output = V;
 
-    fn optimize(self, dout: <Self::Output as LayerOutput>::Grad) {
-        &self.value.optimize(&dout, 0.1);
+    fn optimize(self, dout: <Self::Output as LayerOutput>::Grad, learning_rate: f32) {
+        &self.value.optimize(&dout, learning_rate);
     }
 }
 
@@ -112,7 +112,7 @@ pub struct PlaceholderOptimizer<K, V> {
 impl<K, V: LayerOutput> Optimizer for PlaceholderOptimizer<K, V> {
     type Output = V;
 
-    fn optimize(self, dout: <Self::Output as LayerOutput>::Grad) {}
+    fn optimize(self, dout: <Self::Output as LayerOutput>::Grad, learning_rate: f32) {}
 }
 
 #[derive(Debug, Clone)]
@@ -191,7 +191,7 @@ impl<XOpz: Optimizer<Output = Array1<f32>>, ParamsOpz: Optimizer<Output = Affine
 {
     type Output = Array1<f32>;
 
-    fn optimize(self, dout: <Self::Output as LayerOutput>::Grad) {
+    fn optimize(self, dout: <Self::Output as LayerOutput>::Grad, learning_rate: f32) {
         let dx = self.params.affine_optimize(&dout);
 
         let dw = self
@@ -202,11 +202,14 @@ impl<XOpz: Optimizer<Output = Array1<f32>>, ParamsOpz: Optimizer<Output = Affine
             .dot(&dout.broadcast((1, dout.len_of(Axis(0)))).unwrap());
         let db = dout;
 
-        self.x_optimizer.optimize(dx);
-        self.params_optimizer.optimize(AffineParamsValue {
-            weight: dw,
-            bias: db,
-        });
+        self.x_optimizer.optimize(dx, learning_rate);
+        self.params_optimizer.optimize(
+            AffineParamsValue {
+                weight: dw,
+                bias: db,
+            },
+            learning_rate,
+        );
     }
 }
 
@@ -266,14 +269,14 @@ where
 {
     type Output = Array1<f32>;
 
-    fn optimize(self, mut dout: <Self::Output as LayerOutput>::Grad) {
+    fn optimize(self, mut dout: <Self::Output as LayerOutput>::Grad, learning_rate: f32) {
         Zip::from(&mut dout).and(&self.x).apply(|dout_x, &x| {
             if x <= 0. {
                 *dout_x = 0.;
             }
         });
 
-        self.x_optimizer.optimize(dout);
+        self.x_optimizer.optimize(dout, learning_rate);
     }
 }
 
@@ -317,10 +320,10 @@ where
 {
     type Output = f32;
 
-    fn optimize(self, dout: f32) {
+    fn optimize(self, dout: f32, learning_rate: f32) {
         let d = &self.y - &self.t;
 
-        self.x_optimizer.optimize(d);
+        self.x_optimizer.optimize(d, learning_rate);
         // TODO: 本当はtの微分も考えるべきかも？
     }
 }

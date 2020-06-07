@@ -1,5 +1,8 @@
 use crate::arr_functions;
 use crate::hlist_extra::Has;
+use frunk::labelled::Field;
+use frunk::labelled::{chars, Field, LabelledGeneric, Transmogrifier};
+use frunk::{field, HCons, HNil};
 use ndarray::prelude::*;
 use ndarray::Zip;
 use ndarray_rand::rand_distr::Normal;
@@ -8,19 +11,33 @@ use rand::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::marker::PhantomData;
+use std::ops::Add;
 use std::sync::Arc;
 
-pub struct Network<L> {
+#[derive(frunk::LabelledGeneric, Clone, Debug)]
+pub struct PredictPlaceholders {}
+
+#[derive(frunk::LabelledGeneric, Clone, Debug)]
+pub struct PredictNetworkVariables {}
+
+#[derive(frunk::LabelledGeneric, Clone, Debug)]
+pub struct LossPlaceholders {}
+
+#[derive(frunk::LabelledGeneric, Clone, Debug)]
+pub struct LossNetworkVariables {}
+
+pub struct Network<L, LastL> {
     pub layers: L,
-    pub last_layer: SoftmaxWithLoss,
+    pub last_layer: LastL,
 }
 
-impl<L: Layer<(), (), Input = Array1<f32>, Output = Array1<f32>>> Network<L> {
-    pub fn initialize(layers: L) -> Network<L> {
-        Network {
-            layers,
-            last_layer: SoftmaxWithLoss::new(),
-        }
+impl<L, LastL> Network<L, LastL>
+where
+    L: Layer<PredictPlaceholders, PredictNetworkVariables, Output = Array1<f32>>,
+    LastL: Layer<LossPlaceholders, LossNetworkVariables, Output = f32>,
+{
+    pub fn initialize(layers: L, last_layer: LastL) -> Network<L, LastL> {
+        Network { layers, last_layer }
     }
 
     pub fn predict(
@@ -28,7 +45,7 @@ impl<L: Layer<(), (), Input = Array1<f32>, Output = Array1<f32>>> Network<L> {
         x: Array1<f32>,
     ) -> (
         Array1<f32>,
-        impl LayerBackward<(), (), Input = Array1<f32>, Output = Array1<f32>>,
+        impl LayerBackward<PredictPlaceholders, PredictNetworkVariables, Output = Array1<f32>>,
     ) {
         self.layers.forward(x, &(), &())
     }
@@ -110,82 +127,28 @@ pub fn numerical_diff(f: impl Fn(f32) -> f32, x: f32) -> f32 {
     (f(x + h) - f(x - h)) / (2. * h)
 }
 
-pub trait LayerBackward<Placeholders, Variables> {
-    type Input;
+pub trait LayerBackward<Placeholders: LabelledGeneric, Variables: LabelledGeneric> {
     type Output;
+    type OutputGrad;
+    type Grads;
 
     fn backward(
         &self,
-        grads: &mut Vec<AffineParamsValue>,
-        dout: Self::Output,
-        placeholders: &Placeholders,
-        variables: &Variables,
-    ) -> Self::Input;
+        dout: Self::OutputGrad,
+        placeholders: &Placeholders::Repr,
+        variables: &Variables::Repr,
+    ) -> Self::Grads;
 }
 
-pub trait Layer<Placeholders, Variables> {
-    type Input;
+pub trait Layer<Placeholders: LabelledGeneric, Variables: LabelledGeneric> {
     type Output;
-    type Backward: LayerBackward<
-        Placeholders,
-        Variables,
-        Input = Self::Input,
-        Output = Self::Output,
-    >;
+    type Backward: LayerBackward<Placeholders, Variables, Output = Self::Output>;
 
     fn forward(
         &self,
-        x: Self::Input,
-        placeholders: &Placeholders,
-        variables: &Variables,
+        placeholders: &Placeholders::Repr,
+        variables: &Variables::Repr,
     ) -> (Self::Output, Self::Backward);
-}
-
-impl<
-        Placeholders,
-        Variables,
-        A: LayerBackward<Placeholders, Variables>,
-        B: LayerBackward<Placeholders, Variables, Input = A::Output>,
-    > LayerBackward<Placeholders, Variables> for (A, B)
-{
-    type Input = A::Input;
-    type Output = B::Output;
-
-    fn backward(
-        &self,
-        grads: &mut Vec<AffineParamsValue>,
-        dout: Self::Output,
-        placeholders: &Placeholders,
-        variables: &Variables,
-    ) -> Self::Input {
-        let dout2 = self.1.backward(grads, dout, placeholders, variables);
-        let dout3 = self.0.backward(grads, dout2, placeholders, variables);
-        dout3
-    }
-}
-
-impl<
-        'a,
-        Placeholders,
-        Variables,
-        A: Layer<Placeholders, Variables>,
-        B: Layer<Placeholders, Variables, Input = A::Output>,
-    > Layer<Placeholders, Variables> for (A, B)
-{
-    type Input = A::Input;
-    type Output = B::Output;
-    type Backward = (A::Backward, B::Backward);
-
-    fn forward(
-        &self,
-        x: Self::Input,
-        placeholders: &Placeholders,
-        variables: &Variables,
-    ) -> (Self::Output, Self::Backward) {
-        let (y, ba1) = self.0.forward(x, placeholders, variables);
-        let (z, ba2) = self.1.forward(y, placeholders, variables);
-        (z, (ba1, ba2))
-    }
 }
 
 #[derive(Debug)]
@@ -195,8 +158,8 @@ pub struct AffineParamsValue {
 }
 
 pub trait NetworkVar {
-    type Grad;
-    fn optimize(&self, learning_rate: f32, grad: &Self::Grad);
+    type MutableRef;
+    fn optimize(target: &Self::MutableRef, grad: &Self, learning_rate: f32);
 }
 
 #[derive(Debug, Clone)]
@@ -204,20 +167,18 @@ pub struct VariableBackend<K, I, V> {
     pub phantom: PhantomData<(K, V, I)>,
 }
 
-impl<K, I, V, Placeholders, Variables> LayerBackward<Placeholders, Variables>
-    for VariableBackend<K, I, V>
+impl<K, I, V: NetworkVar, Placeholders: LabelledGeneric, Variables: LabelledGeneric>
+    LayerBackward<Placeholders, Variables> for VariableBackend<K, I, V>
 {
-    type Input = ();
-    type Output = V;
+    type Output = V::MutableRef;
+    type OutputGrad = V;
+    type Grads = HCons<Field<K, V>, HNil>;
 
-    fn backward(
-        &self,
-        grads: &mut Vec<AffineParamsValue>,
-        dout: Self::Output,
-        placeholders: &Placeholders,
-        variables: &Variables,
-    ) -> Self::Input {
-        ()
+    fn backward(&self, dout: Self::OutputGrad, variables: &Variables) -> Self::Grads {
+        HCons {
+            head: field![K, dout],
+            tail: HNil,
+        }
     }
 }
 
@@ -226,19 +187,21 @@ pub struct Variable<K, I, V> {
     pub phantom: PhantomData<(K, V, I)>,
 }
 
-impl<K, I, V, Placeholders, Variables: Has<K, I, TargetValue = V>> Layer<Placeholders, Variables>
-    for Variable<K, V, I>
+impl<K, I, V, Placeholders: LabelledGeneric, Variables: LabelledGeneric>
+    Layer<Placeholders, Variables> for Variable<K, V, I>
+where
+    V: NetworkVar,
+    Variables: LabelledGeneric,
+    Variables::Repr: Has<K, I, TargetValue = V::MutableRef>,
 {
-    type Input = ();
-    type Output = V;
+    type Output = V::MutableRef;
 
     type Backward = VariableBackend<K, I, V>;
 
     fn forward(
         &self,
-        x: (),
-        placeholders: &Placeholders,
-        variables: &Variables,
+        placeholders: &Placeholders::Repr,
+        variables: &Variables::Repr,
     ) -> (Self::Output, Self::Backward) {
         (
             variables.get(),
@@ -254,20 +217,20 @@ pub struct PlaceholderBackend<K, I, V> {
     pub phantom: PhantomData<(K, V, I)>,
 }
 
-impl<K, I, V, Placeholders, Variables> LayerBackward<Placeholders, Variables>
-    for PlaceholderBackend<K, I, V>
+impl<K, I, V, Placeholders: LabelledGeneric, Variables: LabelledGeneric>
+    LayerBackward<Placeholders, Variables> for PlaceholderBackend<K, I, V>
 {
-    type Input = ();
+    type OutputGrad = V;
     type Output = V;
+    type Grads = HNil;
 
     fn backward(
         &self,
-        grads: &mut Vec<AffineParamsValue>,
         dout: Self::Output,
         placeholders: &Placeholders,
         variables: &Variables,
-    ) -> Self::Input {
-        ()
+    ) -> Self::Grads {
+        HNil
     }
 }
 
@@ -276,19 +239,20 @@ pub struct Placeholder<K, I, V> {
     pub phantom: PhantomData<(K, V, I)>,
 }
 
-impl<K, I, V, Placeholders: Has<K, I, TargetValue = V>, Variables> Layer<Placeholders, Variables>
-    for Placeholder<K, V, I>
+impl<K, I, V, Placeholders: LabelledGeneric, Variables: LabelledGeneric>
+    Layer<Placeholders, Variables> for Placeholder<K, V, I>
+where
+    Placeholders: LabelledGeneric,
+    Placeholders::Repr: Has<K, I, TargetValue = V>,
 {
-    type Input = ();
     type Output = V;
 
     type Backward = PlaceholderBackend<K, I, V>;
 
     fn forward(
         &self,
-        x: (),
-        placeholders: &Placeholders,
-        variables: &Variables,
+        placeholders: &Placeholders::Repr,
+        variables: &Variables::Repr,
     ) -> (Self::Output, Self::Backward) {
         (
             placeholders.get(),
@@ -321,11 +285,11 @@ impl AffineParams {
     }
 }
 
-impl NetworkVar for AffineParams {
-    type Grad = AffineParamsValue;
+impl NetworkVar for AffineParamsValue {
+    type MutableRef = AffineParams;
 
-    fn optimize(&self, learning_rate: f32, grad: &Self::Grad) {
-        let mut value = self.0.borrow_mut();
+    fn optimize(target: &AffineParams, grad: &Self, learning_rate: f32) {
+        let mut value = target.0.borrow_mut();
         Zip::from(&mut value.weight)
             .and(&grad.weight)
             .apply(|x, y| *x -= learning_rate * y);
@@ -335,22 +299,34 @@ impl NetworkVar for AffineParams {
     }
 }
 
-pub struct AffineBackward {
+pub struct AffineBackward<XL, ParamsL> {
+    pub x_layer: XL,
+    pub params_layer: ParamsL,
     pub params: AffineParams,
     pub x: Array1<f32>,
 }
 
-impl<Placeholders, Variables> LayerBackward<Placeholders, Variables> for AffineBackward {
-    type Input = Array1<f32>;
+impl<
+        Placeholders: LabelledGeneric,
+        Variables: LabelledGeneric,
+        XL: LayerBackward<Placeholders, Variables, OutputGrad = Array1<f32>>,
+        ParamsL: LayerBackward<Placeholders, Variables, OutputGrad = AffineParamsValue>,
+    > LayerBackward<Placeholders, Variables> for AffineBackward<XL, ParamsL>
+where
+    XL::Grads: Add<<ParamsL as LayerBackward<Placeholders, Variables>>::Grads>,
+{
+    type OutputGrad = Array1<f32>;
     type Output = Array1<f32>;
+    type Grads = <<XL as LayerBackward<Placeholders, Variables>>::Grads as Add<
+        <ParamsL as LayerBackward<Placeholders, Variables>>::Grads,
+    >>::Output;
 
     fn backward(
         &self,
-        grads: &mut Vec<AffineParamsValue>,
-        dout: Array1<f32>,
-        placeholders: &Placeholders,
-        variables: &Variables,
-    ) -> Array1<f32> {
+        dout: Self::OutputGrad,
+        placeholders: &Placeholders::Repr,
+        variables: &Variables::Repr,
+    ) -> Self::Grads {
         let dx = self.params.affine_backward(&dout);
 
         let dw = self
@@ -361,146 +337,200 @@ impl<Placeholders, Variables> LayerBackward<Placeholders, Variables> for AffineB
             .dot(&dout.broadcast((1, dout.len_of(Axis(0)))).unwrap());
         let db = dout;
 
-        grads.push(AffineParamsValue {
-            weight: dw,
-            bias: db,
-        });
-
-        dx
+        self.x_layer.backward(dx, placeholders, variables)
+            + self.params_layer.backward(
+                AffineParamsValue {
+                    weight: dw,
+                    bias: db,
+                },
+                placeholders,
+                variables,
+            )
     }
 }
 
-pub struct Affine {
-    pub params: AffineParams,
+pub struct Affine<XL, ParamsL> {
+    pub x_layer: XL,
+    pub params_layer: ParamsL,
 }
 
-impl Affine {
-    pub fn new(params: AffineParams) -> Affine {
-        Affine { params }
+impl<XL, ParamsL> Affine<XL, ParamsL> {
+    pub fn new(x_layer: XL, params_layer: ParamsL) -> Self {
+        Affine {
+            x_layer,
+            params_layer,
+        }
     }
 }
 
-impl<'a, Placeholders, Variables> Layer<Placeholders, Variables> for Affine {
-    type Input = Array1<f32>;
+impl<XL, ParamsL, Placeholders: LabelledGeneric, Variables: LabelledGeneric>
+    Layer<Placeholders, Variables> for Affine<XL, ParamsL>
+where
+    XL: Layer<Placeholders, Variables, Output = Array1<f32>>,
+    ParamsL: Layer<Placeholders, Variables, Output = AffineParams>,
+    XL::Backward: LayerBackward<Placeholders, Variables>,
+    ParamsL::Backward: LayerBackward<Placeholders, Variables>,
+    AffineBackward<XL::Backward, ParamsL::Backward>:
+        LayerBackward<Placeholders, Variables, Output = Array1<f32>>,
+{
     type Output = Array1<f32>;
-    type Backward = AffineBackward;
+    type Backward = AffineBackward<XL::Backward, ParamsL::Backward>;
 
     fn forward(
         &self,
-        x: Array1<f32>,
-        placeholders: &Placeholders,
-        variables: &Variables,
+        placeholders: &Placeholders::Repr,
+        variables: &Variables::Repr,
     ) -> (Self::Output, Self::Backward) {
-        let y = self.params.affine_forward(&x);
+        let (x, x_layer) = self.x_layer.forward(placeholders, variables);
+        let (params, params_layer) = self.params_layer.forward(placeholders, variables);
+
+        let y = params.affine_forward(&x);
         (
             y,
             AffineBackward {
-                params: self.params.clone(),
+                params,
                 x,
+                x_layer,
+                params_layer,
             },
         )
     }
 }
 
-pub struct ReluBackward {
+pub struct ReluBackward<XL> {
     pub x: Array1<f32>,
+    pub x_layer: XL,
 }
 
-impl<'a, Placeholders, Variables> LayerBackward<Placeholders, Variables> for ReluBackward {
-    type Input = Array1<f32>;
+impl<XL, Placeholders: LabelledGeneric, Variables: LabelledGeneric>
+    LayerBackward<Placeholders, Variables> for ReluBackward<XL>
+where
+    XL: LayerBackward<Placeholders, Variables, OutputGrad = Array1<f32>>,
+{
     type Output = Array1<f32>;
+    type OutputGrad = XL::OutputGrad;
+    type Grads = XL::Grads;
 
     fn backward(
         &self,
-        grads: &mut Vec<AffineParamsValue>,
-        mut dout: Array1<f32>,
-        placeholders: &Placeholders,
-        variables: &Variables,
-    ) -> Array1<f32> {
+        mut dout: Self::OutputGrad,
+        placeholders: &Placeholders::Repr,
+        variables: &Variables::Repr,
+    ) -> Self::Grads {
         Zip::from(&mut dout).and(&self.x).apply(|dout_x, &x| {
             if x <= 0. {
                 *dout_x = 0.;
             }
         });
 
-        dout
+        self.x_layer.backward(dout, placeholders, variables)
     }
 }
 
-pub struct Relu {}
+pub struct Relu<XL> {
+    pub x_layer: XL,
+}
 
-impl Relu {
-    pub fn new() -> Relu {
-        Relu {}
+impl<XL> Relu<XL> {
+    pub fn new(x_layer: XL) -> Relu<XL> {
+        Relu { x_layer }
     }
 }
 
-impl<Placeholders, Variables> Layer<Placeholders, Variables> for Relu {
-    type Input = Array1<f32>;
+impl<XL, Placeholders: LabelledGeneric, Variables: LabelledGeneric> Layer<Placeholders, Variables>
+    for Relu<XL>
+where
+    XL: Layer<Placeholders, Variables, Output = Array1<f32>>,
+    ReluBackward<XL::Backward>: LayerBackward<Placeholders, Variables, Output = Array1<f32>>,
+{
     type Output = Array1<f32>;
-    type Backward = ReluBackward;
+    type Backward = ReluBackward<XL::Backward>;
 
     fn forward(
         &self,
-        x: Array1<f32>,
-        placeholders: &Placeholders,
-        variables: &Variables,
+        placeholders: &Placeholders::Repr,
+        variables: &Variables::Repr,
     ) -> (Self::Output, Self::Backward) {
+        let (x, x_layer) = self.x_layer.forward(placeholders, variables);
         let y = x.mapv(|x| x.max(0.));
-        (y, ReluBackward { x })
+        (y, ReluBackward { x, x_layer })
     }
 }
 
-pub struct SoftmaxWithLossBackward {
+pub struct SoftmaxWithLossBackward<XL, TL> {
     pub y: Array1<f32>,
     pub t: Array1<f32>,
+    pub x_layer: XL,
+    pub t_layer: TL,
 }
 
-impl<Placeholders, Variables> LayerBackward<Placeholders, Variables> for SoftmaxWithLossBackward {
-    type Input = Array1<f32>;
+impl<XL, TL, Placeholders: LabelledGeneric, Variables: LabelledGeneric>
+    LayerBackward<Placeholders, Variables> for SoftmaxWithLossBackward<XL, TL>
+where
+    XL: LayerBackward<Placeholders, Variables, OutputGrad = Array1<f32>>,
+    TL: LayerBackward<Placeholders, Variables, OutputGrad = Array1<f32>>,
+    XL::Grads: Add<<TL as LayerBackward<Placeholders, Variables>>::Grads>,
+{
+    type OutputGrad = f32;
     type Output = f32;
+    type Grads = <<XL as LayerBackward<Placeholders, Variables>>::Grads as Add<
+        <TL as LayerBackward<Placeholders, Variables>>::Grads,
+    >>::Output;
 
     fn backward(
         &self,
         grads: &mut Vec<AffineParamsValue>,
         dout: f32,
-        placeholders: &Placeholders,
-        variables: &Variables,
-    ) -> Array1<f32> {
-        &self.y - &self.t
+        placeholders: &Placeholders::Repr,
+        variables: &Variables::Repr,
+    ) -> Self::Grads {
+        let d = &self.y - &self.t;
+
+        self.x_layer.backward(d.clone(), placeholders, variables)
+            + self.t_layer.backward(d.clone(), placeholders, variables)
     }
 }
 
-pub struct SoftmaxWithLoss {
-    pub t: Array1<f32>,
+pub struct SoftmaxWithLoss<XL, TL> {
+    pub x_layer: XL,
+    pub t_layer: TL,
 }
 
-impl SoftmaxWithLoss {
-    pub fn new() -> SoftmaxWithLoss {
-        SoftmaxWithLoss { t: array![] }
+impl<XL, TL> SoftmaxWithLoss<XL, TL> {
+    pub fn new(x_layer: XL, t_layer: TL) -> Self {
+        SoftmaxWithLoss { x_layer, t_layer }
     }
 }
 
-impl<Placeholders, Variables> Layer<Placeholders, Variables> for SoftmaxWithLoss {
-    type Input = Array1<f32>;
+impl<XL, TL, Placeholders: LabelledGeneric, Variables: LabelledGeneric>
+    Layer<Placeholders, Variables> for SoftmaxWithLoss<XL, TL>
+where
+    XL: Layer<Placeholders, Variables, Output = Array1<f32>>,
+    TL: Layer<Placeholders, Variables, Output = Array1<f32>>,
+    SoftmaxWithLossBackward<XL::Backward, TL::Backward>:
+        LayerBackward<Placeholders, Variables, Output = f32>,
+{
     type Output = f32;
-    type Backward = SoftmaxWithLossBackward;
+    type Backward = SoftmaxWithLossBackward<XL::Backward, TL::Backward>;
 
-    // 呼び出す前にtセット(なんとかする)
     fn forward(
         &self,
-        x: Array1<f32>,
-        placeholders: &Placeholders,
-        variables: &Variables,
+        placeholders: &Placeholders::Repr,
+        variables: &Variables::Repr,
     ) -> (Self::Output, Self::Backward) {
+        let (x, x_layer) = self.x_layer.forward(placeholders, variables);
+        let (t, t_layer) = self.t_layer.forward(placeholders, variables);
+
         let y = arr_functions::softmax_arr1(x.view());
-        let loss = arr_functions::cross_entropy_error(y.view(), self.t.view());
+        let loss = arr_functions::cross_entropy_error(y.view(), t.view());
 
         (
             loss,
             SoftmaxWithLossBackward {
-                t: self.t.clone(), /* TODO: cloneしない */
+                t,
                 y,
+                x_layer,
+                t_layer,
             },
         )
     }

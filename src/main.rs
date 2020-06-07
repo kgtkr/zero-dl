@@ -27,11 +27,11 @@ fn label_test() {
     let y = get_y(&hoge_repr);
 
     fn get_x<I, T: Has<chars::x, I, TargetValue = i32>>(obj: &T) -> i32 {
-        *obj.get()
+        obj.get()
     }
 
     fn get_y<I, T: Has<chars::y, I, TargetValue = i64>>(obj: &T) -> i64 {
-        *obj.get()
+        obj.get()
     }
 
     fn set_x<Tail>(obj: Tail, x: i32) -> HCons<Field<chars::x, i32>, Tail> {

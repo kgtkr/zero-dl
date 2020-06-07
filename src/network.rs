@@ -1,4 +1,5 @@
 use crate::arr_functions;
+use crate::hlist_extra::Has;
 use ndarray::prelude::*;
 use ndarray::Zip;
 use ndarray_rand::rand_distr::Normal;
@@ -6,6 +7,7 @@ use ndarray_rand::RandomExt;
 use rand::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
+use std::marker::PhantomData;
 use std::sync::Arc;
 
 pub struct Network<L> {
@@ -198,6 +200,106 @@ pub trait NetworkVar {
 }
 
 #[derive(Debug, Clone)]
+pub struct VariableBackend<K, I, V> {
+    pub phantom: PhantomData<(K, V, I)>,
+}
+
+impl<K, I, V, Placeholders, Variables> LayerBackward<Placeholders, Variables>
+    for VariableBackend<K, I, V>
+{
+    type Input = ();
+    type Output = V;
+
+    fn backward(
+        &self,
+        grads: &mut Vec<AffineParamsValue>,
+        dout: Self::Output,
+        placeholders: &Placeholders,
+        variables: &Variables,
+    ) -> Self::Input {
+        ()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Variable<K, I, V> {
+    pub phantom: PhantomData<(K, V, I)>,
+}
+
+impl<K, I, V, Placeholders, Variables: Has<K, I, TargetValue = V>> Layer<Placeholders, Variables>
+    for Variable<K, V, I>
+{
+    type Input = ();
+    type Output = V;
+
+    type Backward = VariableBackend<K, I, V>;
+
+    fn forward(
+        &self,
+        x: (),
+        placeholders: &Placeholders,
+        variables: &Variables,
+    ) -> (Self::Output, Self::Backward) {
+        (
+            variables.get(),
+            VariableBackend {
+                phantom: PhantomData,
+            },
+        )
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct PlaceholderBackend<K, I, V> {
+    pub phantom: PhantomData<(K, V, I)>,
+}
+
+impl<K, I, V, Placeholders, Variables> LayerBackward<Placeholders, Variables>
+    for PlaceholderBackend<K, I, V>
+{
+    type Input = ();
+    type Output = V;
+
+    fn backward(
+        &self,
+        grads: &mut Vec<AffineParamsValue>,
+        dout: Self::Output,
+        placeholders: &Placeholders,
+        variables: &Variables,
+    ) -> Self::Input {
+        ()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Placeholder<K, I, V> {
+    pub phantom: PhantomData<(K, V, I)>,
+}
+
+impl<K, I, V, Placeholders: Has<K, I, TargetValue = V>, Variables> Layer<Placeholders, Variables>
+    for Placeholder<K, V, I>
+{
+    type Input = ();
+    type Output = V;
+
+    type Backward = PlaceholderBackend<K, I, V>;
+
+    fn forward(
+        &self,
+        x: (),
+        placeholders: &Placeholders,
+        variables: &Variables,
+    ) -> (Self::Output, Self::Backward) {
+        (
+            placeholders.get(),
+            PlaceholderBackend {
+                phantom: PhantomData,
+            },
+        )
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct AffineParams(Arc<RefCell<AffineParamsValue>>);
 
 impl AffineParams {
@@ -238,7 +340,7 @@ pub struct AffineBackward {
     pub x: Array1<f32>,
 }
 
-impl<'a, Placeholders, Variables> LayerBackward<Placeholders, Variables> for AffineBackward {
+impl<Placeholders, Variables> LayerBackward<Placeholders, Variables> for AffineBackward {
     type Input = Array1<f32>;
     type Output = Array1<f32>;
 

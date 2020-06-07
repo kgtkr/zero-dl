@@ -70,7 +70,7 @@ impl Network {
                 let t = t_train.index_axis(Axis(0), i);
                 let grads = self.gradient(x.to_owned(), t.to_owned());
                 for (i, grad) in grads.into_iter().enumerate() {
-                    params[i].learning(learning_rate, &grad);
+                    params[i].optimize(learning_rate, &grad);
                 }
             }
 
@@ -151,6 +151,11 @@ pub struct AffineParamsValue {
     pub bias: Array1<f32>,
 }
 
+pub trait NetworkVar {
+    type Grad;
+    fn optimize(&self, learning_rate: f32, grad: &Self::Grad);
+}
+
 #[derive(Debug, Clone)]
 pub struct AffineParams(Arc<RefCell<AffineParamsValue>>);
 
@@ -171,8 +176,12 @@ impl AffineParams {
     pub fn affine_backward(&self, dout: &Array1<f32>) -> Array1<f32> {
         dout.dot(&self.0.borrow().weight.t())
     }
+}
 
-    pub fn learning(&self, learning_rate: f32, grad: &AffineParamsValue) {
+impl NetworkVar for AffineParams {
+    type Grad = AffineParamsValue;
+
+    fn optimize(&self, learning_rate: f32, grad: &Self::Grad) {
         let mut value = self.0.borrow_mut();
         Zip::from(&mut value.weight)
             .and(&grad.weight)

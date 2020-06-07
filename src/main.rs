@@ -2,6 +2,7 @@ use flate2::read::GzDecoder;
 use frunk::labelled::{chars, Transmogrifier};
 use frunk::{field, hlist};
 use ndarray::prelude::*;
+use ndarray::Zip;
 use rand::prelude::*;
 use std::fs::File;
 use zero_dl::arr_functions;
@@ -41,17 +42,18 @@ fn main() {
     let x = Placeholder::<chars::x, Array1<f32>>::new();
     let t = Placeholder::<chars::t, Array1<f32>>::new();
 
-    let params1 = Variable::new(AffineParams::initialize(784, 100));
+    let params1 = Variable::new(AffineParams::initialize(784, 1000));
     let affine1 = Affine::new(&x, &params1);
     let relu1 = Relu::new(&affine1);
 
-    let params2 = Variable::new(AffineParams::initialize(100, 10));
+    let params2 = Variable::new(AffineParams::initialize(1000, 10));
     let affine2 = Affine::new(&relu1, &params2);
     let softmax_with_loss = SoftmaxWithLoss::new(&affine2, &t);
 
-    let iters_num = 10000;
+    let iters_num = 10;
+    let batch_size = 1000;
 
-    for n in 0..iters_num {
+    for n in 0..iters_num * batch_size {
         let i = rng.gen_range(0, train_x.len_of(Axis(0)));
         let x = train_x.index_axis(Axis(0), i);
         let t = train_t.index_axis(Axis(0), i);
@@ -61,23 +63,22 @@ fn main() {
         ]);
         ba.backward(1.);
 
-        println!("i:{} loss:{}", n, loss);
-    }
-
-    let mut succ = 0;
-
-    for i in 0..1000 {
-        let x = test_x.index_axis(Axis(0), i);
-        let t = test_t.labels[i];
-
-        let answer = max_idx(affine2.forward(hlist![field![chars::x, x.to_owned()]]).0);
-
-        if answer == t as usize {
-            succ += 1;
+        if n % batch_size == batch_size - 1 {
+            println!("i:{} loss:{}", n, loss);
         }
     }
 
-    println!("{}/1000", succ);
+    let (ac, per) =
+        test_x
+            .axis_iter(Axis(0))
+            .zip(test_t.labels.iter())
+            .fold((0, 0), |(ac, per), (x, &t)| {
+                let y = max_idx(affine2.forward(hlist![field![chars::x, x.to_owned()]]).0);
+
+                (ac + if y == t as usize { 1 } else { 0 }, per + 1)
+            });
+
+    println!("{}/{}", ac, per);
 }
 
 fn max_idx(arr: Array1<f32>) -> usize {

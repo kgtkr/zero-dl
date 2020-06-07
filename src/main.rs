@@ -9,7 +9,7 @@ use zero_dl::arr_functions;
 use zero_dl::functions::*;
 use zero_dl::mnist::{MnistImages, MnistLabels};
 use zero_dl::network::{
-    Affine, AffineParams, Layer, LayerBackward, Placeholder, Relu, SoftmaxWithLoss, Variable,
+    Affine, AffineParams, Layer, Optimizer, Placeholder, Relu, SoftmaxWithLoss, Variable,
 };
 
 macro_rules! layers {
@@ -77,7 +77,7 @@ fn main() {
             field![chars::x, x.to_owned()],
             field![chars::t, t.to_owned()]
         ]);
-        ba.backward(1.);
+        ba.optimize(1.);
 
         if n % batch_size == batch_size - 1 {
             println!("i:{} loss:{}", n, loss);

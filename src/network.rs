@@ -29,29 +29,29 @@ pub fn numerical_diff(f: impl Fn(f32) -> f32, x: f32) -> f32 {
     (f(x + h) - f(x - h)) / (2. * h)
 }
 
-pub trait LayerBackward {
+pub trait Optimizer {
     // TODO: これ型クラス作ってOutputの微分値みたいな関連型でまとめたい
     type Output;
     type OutputGrad;
 
     // TODO: 最適化みたいな名前に変える
-    fn backward(self, dout: Self::OutputGrad);
+    fn optimize(self, dout: Self::OutputGrad);
 }
 
 pub trait Layer {
     type Output;
-    type Backward: LayerBackward;
+    type Optimizer: Optimizer;
     type Placeholders;
 
-    fn forward(&self, placeholders: Self::Placeholders) -> (Self::Output, Self::Backward);
+    fn forward(&self, placeholders: Self::Placeholders) -> (Self::Output, Self::Optimizer);
 }
 
 impl<T: Layer> Layer for &T {
     type Output = T::Output;
-    type Backward = T::Backward;
+    type Optimizer = T::Optimizer;
     type Placeholders = T::Placeholders;
 
-    fn forward(&self, placeholders: Self::Placeholders) -> (Self::Output, Self::Backward) {
+    fn forward(&self, placeholders: Self::Placeholders) -> (Self::Output, Self::Optimizer) {
         (*self).forward(placeholders)
     }
 }
@@ -68,15 +68,15 @@ pub trait NetworkVar {
 }
 
 #[derive(Debug, Clone)]
-pub struct VariableBackend<V: NetworkVar> {
+pub struct VariableOptimizer<V: NetworkVar> {
     pub value: V::MutableRef,
 }
 
-impl<V: NetworkVar> LayerBackward for VariableBackend<V> {
+impl<V: NetworkVar> Optimizer for VariableOptimizer<V> {
     type Output = V::MutableRef;
     type OutputGrad = V;
 
-    fn backward(self, dout: Self::OutputGrad) {
+    fn optimize(self, dout: Self::OutputGrad) {
         V::optimize(&self.value, &dout, 0.1);
     }
 }
@@ -98,14 +98,14 @@ where
 {
     type Output = V::MutableRef;
 
-    type Backward = VariableBackend<V>;
+    type Optimizer = VariableOptimizer<V>;
 
     type Placeholders = HNil;
 
-    fn forward(&self, placeholders: Self::Placeholders) -> (Self::Output, Self::Backward) {
+    fn forward(&self, placeholders: Self::Placeholders) -> (Self::Output, Self::Optimizer) {
         (
             self.value.clone(),
-            VariableBackend {
+            VariableOptimizer {
                 value: self.value.clone(),
             },
         )
@@ -113,15 +113,15 @@ where
 }
 
 #[derive(Debug, Clone)]
-pub struct PlaceholderBackend<K, V> {
+pub struct PlaceholderOptimizer<K, V> {
     pub phantom: PhantomData<(K, V)>,
 }
 
-impl<K, V> LayerBackward for PlaceholderBackend<K, V> {
+impl<K, V> Optimizer for PlaceholderOptimizer<K, V> {
     type OutputGrad = V;
     type Output = V;
 
-    fn backward(self, dout: Self::Output) {}
+    fn optimize(self, dout: Self::Output) {}
 }
 
 #[derive(Debug, Clone)]
@@ -140,14 +140,14 @@ impl<K, V> Placeholder<K, V> {
 impl<K, V> Layer for Placeholder<K, V> {
     type Output = V;
 
-    type Backward = PlaceholderBackend<K, V>;
+    type Optimizer = PlaceholderOptimizer<K, V>;
 
     type Placeholders = HCons<Field<K, V>, HNil>;
 
-    fn forward(&self, placeholders: Self::Placeholders) -> (Self::Output, Self::Backward) {
+    fn forward(&self, placeholders: Self::Placeholders) -> (Self::Output, Self::Optimizer) {
         (
             placeholders.head.value,
-            PlaceholderBackend {
+            PlaceholderOptimizer {
                 phantom: PhantomData,
             },
         )
@@ -171,7 +171,7 @@ impl AffineParams {
         x.dot(&self.0.borrow().weight) + &self.0.borrow().bias
     }
 
-    pub fn affine_backward(&self, dout: &Array1<f32>) -> Array1<f32> {
+    pub fn affine_optimize(&self, dout: &Array1<f32>) -> Array1<f32> {
         dout.dot(&self.0.borrow().weight.t())
     }
 }
@@ -190,7 +190,7 @@ impl NetworkVar for AffineParamsValue {
     }
 }
 
-pub struct AffineBackward<XL, ParamsL> {
+pub struct AffineOptimizer<XL, ParamsL> {
     pub x_layer: XL,
     pub params_layer: ParamsL,
     pub params: AffineParams,
@@ -198,15 +198,15 @@ pub struct AffineBackward<XL, ParamsL> {
 }
 
 impl<
-        XL: LayerBackward<OutputGrad = Array1<f32>>,
-        ParamsL: LayerBackward<OutputGrad = AffineParamsValue>,
-    > LayerBackward for AffineBackward<XL, ParamsL>
+        XL: Optimizer<OutputGrad = Array1<f32>>,
+        ParamsL: Optimizer<OutputGrad = AffineParamsValue>,
+    > Optimizer for AffineOptimizer<XL, ParamsL>
 {
     type OutputGrad = Array1<f32>;
     type Output = Array1<f32>;
 
-    fn backward(self, dout: Self::OutputGrad) {
-        let dx = self.params.affine_backward(&dout);
+    fn optimize(self, dout: Self::OutputGrad) {
+        let dx = self.params.affine_optimize(&dout);
 
         let dw = self
             .x
@@ -216,8 +216,8 @@ impl<
             .dot(&dout.broadcast((1, dout.len_of(Axis(0)))).unwrap());
         let db = dout;
 
-        self.x_layer.backward(dx);
-        self.params_layer.backward(AffineParamsValue {
+        self.x_layer.optimize(dx);
+        self.params_layer.optimize(AffineParamsValue {
             weight: dw,
             bias: db,
         });
@@ -242,16 +242,16 @@ impl<XL, ParamsL> Layer for Affine<XL, ParamsL>
 where
     XL: Layer<Output = Array1<f32>>,
     ParamsL: Layer<Output = AffineParams>,
-    XL::Backward: LayerBackward,
-    ParamsL::Backward: LayerBackward,
-    AffineBackward<XL::Backward, ParamsL::Backward>: LayerBackward<Output = Array1<f32>>,
+    XL::Optimizer: Optimizer,
+    ParamsL::Optimizer: Optimizer,
+    AffineOptimizer<XL::Optimizer, ParamsL::Optimizer>: Optimizer<Output = Array1<f32>>,
     XL::Placeholders: ConcatAndSplit<ParamsL::Placeholders>,
 {
     type Output = Array1<f32>;
-    type Backward = AffineBackward<XL::Backward, ParamsL::Backward>;
+    type Optimizer = AffineOptimizer<XL::Optimizer, ParamsL::Optimizer>;
     type Placeholders = <XL::Placeholders as ConcatAndSplit<ParamsL::Placeholders>>::Output;
 
-    fn forward(&self, placeholders: Self::Placeholders) -> (Self::Output, Self::Backward) {
+    fn forward(&self, placeholders: Self::Placeholders) -> (Self::Output, Self::Optimizer) {
         let (x_placeholders, params_placeholders) = ConcatAndSplit::split(placeholders);
         let (x, x_layer) = self.x_layer.forward(x_placeholders);
         let (params, params_layer) = self.params_layer.forward(params_placeholders);
@@ -259,7 +259,7 @@ where
         let y = params.affine_forward(&x);
         (
             y,
-            AffineBackward {
+            AffineOptimizer {
                 params,
                 x,
                 x_layer,
@@ -269,26 +269,26 @@ where
     }
 }
 
-pub struct ReluBackward<XL> {
+pub struct ReluOptimizer<XL> {
     pub x: Array1<f32>,
     pub x_layer: XL,
 }
 
-impl<XL> LayerBackward for ReluBackward<XL>
+impl<XL> Optimizer for ReluOptimizer<XL>
 where
-    XL: LayerBackward<OutputGrad = Array1<f32>>,
+    XL: Optimizer<OutputGrad = Array1<f32>>,
 {
     type Output = Array1<f32>;
     type OutputGrad = XL::OutputGrad;
 
-    fn backward(self, mut dout: Self::OutputGrad) {
+    fn optimize(self, mut dout: Self::OutputGrad) {
         Zip::from(&mut dout).and(&self.x).apply(|dout_x, &x| {
             if x <= 0. {
                 *dout_x = 0.;
             }
         });
 
-        self.x_layer.backward(dout);
+        self.x_layer.optimize(dout);
     }
 }
 
@@ -305,38 +305,38 @@ impl<XL> Relu<XL> {
 impl<XL> Layer for Relu<XL>
 where
     XL: Layer<Output = Array1<f32>>,
-    ReluBackward<XL::Backward>: LayerBackward<Output = Array1<f32>>,
+    ReluOptimizer<XL::Optimizer>: Optimizer<Output = Array1<f32>>,
 {
     type Output = Array1<f32>;
-    type Backward = ReluBackward<XL::Backward>;
+    type Optimizer = ReluOptimizer<XL::Optimizer>;
     type Placeholders = XL::Placeholders;
 
-    fn forward(&self, placeholders: Self::Placeholders) -> (Self::Output, Self::Backward) {
+    fn forward(&self, placeholders: Self::Placeholders) -> (Self::Output, Self::Optimizer) {
         let (x, x_layer) = self.x_layer.forward(placeholders);
         let y = x.mapv(|x| x.max(0.));
-        (y, ReluBackward { x, x_layer })
+        (y, ReluOptimizer { x, x_layer })
     }
 }
 
-pub struct SoftmaxWithLossBackward<XL, TL> {
+pub struct SoftmaxWithLossOptimizer<XL, TL> {
     pub y: Array1<f32>,
     pub t: Array1<f32>,
     pub x_layer: XL,
     pub t_layer: TL,
 }
 
-impl<XL, TL> LayerBackward for SoftmaxWithLossBackward<XL, TL>
+impl<XL, TL> Optimizer for SoftmaxWithLossOptimizer<XL, TL>
 where
-    XL: LayerBackward<OutputGrad = Array1<f32>>,
-    TL: LayerBackward<OutputGrad = Array1<f32>>,
+    XL: Optimizer<OutputGrad = Array1<f32>>,
+    TL: Optimizer<OutputGrad = Array1<f32>>,
 {
     type OutputGrad = f32;
     type Output = f32;
 
-    fn backward(self, dout: f32) {
+    fn optimize(self, dout: f32) {
         let d = &self.y - &self.t;
 
-        self.x_layer.backward(d);
+        self.x_layer.optimize(d);
         // TODO: 本当はtの微分も考えるべきかも？
     }
 }
@@ -356,14 +356,14 @@ impl<XL, TL> Layer for SoftmaxWithLoss<XL, TL>
 where
     XL: Layer<Output = Array1<f32>>,
     TL: Layer<Output = Array1<f32>>,
-    SoftmaxWithLossBackward<XL::Backward, TL::Backward>: LayerBackward<Output = f32>,
+    SoftmaxWithLossOptimizer<XL::Optimizer, TL::Optimizer>: Optimizer<Output = f32>,
     XL::Placeholders: ConcatAndSplit<TL::Placeholders>,
 {
     type Output = f32;
-    type Backward = SoftmaxWithLossBackward<XL::Backward, TL::Backward>;
+    type Optimizer = SoftmaxWithLossOptimizer<XL::Optimizer, TL::Optimizer>;
     type Placeholders = <XL::Placeholders as ConcatAndSplit<TL::Placeholders>>::Output;
 
-    fn forward(&self, placeholders: Self::Placeholders) -> (Self::Output, Self::Backward) {
+    fn forward(&self, placeholders: Self::Placeholders) -> (Self::Output, Self::Optimizer) {
         let (x_placeholders, t_placeholders) = ConcatAndSplit::split(placeholders);
 
         let (x, x_layer) = self.x_layer.forward(x_placeholders);
@@ -374,7 +374,7 @@ where
 
         (
             loss,
-            SoftmaxWithLossBackward {
+            SoftmaxWithLossOptimizer {
                 t,
                 y,
                 x_layer,

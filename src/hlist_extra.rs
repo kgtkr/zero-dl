@@ -4,29 +4,50 @@ use frunk::hlist::{HCons, HList, HNil};
 use frunk::indices::{Here, There};
 use frunk::labelled::{chars, Field, LabelledGeneric, Transmogrifier};
 
-pub trait Has<TargetKey, Index> {
-    type TargetValue;
-    type Remainder;
-    fn get(&self) -> &Self::TargetValue;
+pub trait ConcatAndSplit<RHS>: Sized {
+    type Output;
+
+    fn concat(self, rhs: RHS) -> Self::Output;
+    fn split(output: Self::Output) -> (Self, RHS);
 }
-impl<K, V, Tail> Has<K, Here> for HCons<Field<K, V>, Tail> {
-    type TargetValue = V;
-    type Remainder = Tail;
-    fn get(&self) -> &Self::TargetValue {
-        &self.head.value
-    }
-}
-impl<Head, Tail, K, TailIndex> Has<K, There<TailIndex>> for HCons<Head, Tail>
+
+impl<RHS> ConcatAndSplit<RHS> for HNil
 where
-    Tail: Has<K, TailIndex>,
+    RHS: HList,
 {
-    type TargetValue = <Tail as Has<K, TailIndex>>::TargetValue;
-    type Remainder = HCons<Head, <Tail as Has<K, TailIndex>>::Remainder>;
-    fn get(&self) -> &Self::TargetValue {
-        <Tail as Has<K, TailIndex>>::get(&self.tail)
+    type Output = RHS;
+
+    fn concat(self, rhs: RHS) -> Self::Output {
+        rhs
+    }
+
+    fn split(output: Self::Output) -> (Self, RHS) {
+        (HNil, output)
     }
 }
 
-pub trait BorrowSub<Target> {
-    fn borrow_sub(&self) -> Target;
+impl<H, T, RHS> ConcatAndSplit<RHS> for HCons<H, T>
+where
+    T: ConcatAndSplit<RHS>,
+    RHS: HList,
+{
+    type Output = HCons<H, <T as ConcatAndSplit<RHS>>::Output>;
+
+    fn concat(self, rhs: RHS) -> Self::Output {
+        HCons {
+            head: self.head,
+            tail: self.tail.concat(rhs),
+        }
+    }
+
+    fn split(output: Self::Output) -> (Self, RHS) {
+        let (a, b) = ConcatAndSplit::split(output.tail);
+        (
+            HCons {
+                head: output.head,
+                tail: a,
+            },
+            b,
+        )
+    }
 }

@@ -1,12 +1,15 @@
 use flate2::read::GzDecoder;
+use frunk::labelled::{chars, Transmogrifier};
+use frunk::{field, hlist};
 use ndarray::prelude::*;
+use rand::prelude::*;
 use std::fs::File;
 use zero_dl::arr_functions;
 use zero_dl::functions::*;
 use zero_dl::mnist::{MnistImages, MnistLabels};
 use zero_dl::network::{
-    Affine, AffineParams, LossPlaceholders, Network, Placeholder, PredictPlaceholders, Relu,
-    Variable,
+    Affine, AffineParams, Layer, LayerBackward, LossPlaceholders, Network, Placeholder,
+    PredictPlaceholders, Relu, SoftmaxWithLoss, Variable,
 };
 
 fn main() {
@@ -22,21 +25,33 @@ fn main() {
     .unwrap()
     .to_data();
 
-    let params1 = AffineParams::initialize(784, 100);
-    let params2 = AffineParams::initialize(100, 10);
+    let mut rng = rand::thread_rng();
 
-    let var1 = Variable::new(params1.clone());
-    let var2 = Variable::new(params2.clone());
+    let x = Placeholder::<chars::x, Array1<f32>>::new();
+    let t = Placeholder::<chars::t, Array1<f32>>::new();
 
-    let x = Placeholder;
+    let params1 = Variable::new(AffineParams::initialize(784, 100));
+    let affine1 = Affine::new(&x, &params1);
+    let relu1 = Relu::new(&affine1);
 
-    let mut network = Network::initialize((
-        Affine::new(params1.clone()),
-        (Relu::new(), Affine::new(params2.clone())),
-    ));
+    let params2 = Variable::new(AffineParams::initialize(100, 10));
+    let affine2 = Affine::new(&relu1, &params2);
+    let softmax_with_loss = SoftmaxWithLoss::new(&affine2, &t);
 
-    println!("start");
-    network.learning(&vec![params1, params2], train_x, train_t);
+    let iters_num = 10000;
+
+    for i in 0..iters_num {
+        let i = rng.gen_range(0, train_x.len_of(Axis(0)));
+        let x = train_x.index_axis(Axis(0), i);
+        let t = train_t.index_axis(Axis(0), i);
+        let (loss, ba) = softmax_with_loss.forward(hlist![
+            field![chars::x, x.to_owned()],
+            field![chars::t, t.to_owned()]
+        ]);
+        ba.backward(1.);
+
+        println!("i:{} loss:{}", i, loss);
+    }
 
     let test_t = MnistLabels::parse(&mut GzDecoder::new(
         File::open("mnist-data/t10k-labels-idx1-ubyte.gz").unwrap(),
@@ -55,8 +70,8 @@ fn main() {
         let x = test_x.index_axis(Axis(0), i);
         let t = test_t.labels[i];
 
-        let answer = network
-            .predict(x.to_owned())
+        let answer = affine2
+            .forward(hlist![field![chars::x, x.to_owned()]])
             .0
             .iter()
             .enumerate()

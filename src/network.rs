@@ -1,6 +1,5 @@
 use crate::arr_functions;
-use crate::hlist_extra::Has;
-use frunk::hlist::Sculptor;
+use crate::hlist_extra::ConcatAndSplit;
 use frunk::labelled::{Field, LabelledGeneric, Transmogrifier};
 use frunk::{HCons, HNil};
 use ndarray::prelude::*;
@@ -124,6 +123,16 @@ pub trait Layer {
     fn forward(&self, placeholders: Self::Placeholders) -> (Self::Output, Self::Backward);
 }
 
+impl<T: Layer> Layer for &T {
+    type Output = T::Output;
+    type Backward = T::Backward;
+    type Placeholders = T::Placeholders;
+
+    fn forward(&self, placeholders: Self::Placeholders) -> (Self::Output, Self::Backward) {
+        (*self).forward(placeholders)
+    }
+}
+
 #[derive(Debug)]
 pub struct AffineParamsValue {
     pub weight: Array2<f32>,
@@ -195,6 +204,14 @@ impl<K, V> LayerBackward for PlaceholderBackend<K, V> {
 #[derive(Debug, Clone)]
 pub struct Placeholder<K, V> {
     pub phantom: PhantomData<(K, V)>,
+}
+
+impl<K, V> Placeholder<K, V> {
+    pub fn new() -> Self {
+        Placeholder {
+            phantom: PhantomData,
+        }
+    }
 }
 
 impl<K, V> Layer for Placeholder<K, V> {
@@ -278,38 +295,35 @@ impl<
     }
 }
 
-pub struct Affine<XL, ParamsL, Placeholders, Indices> {
+pub struct Affine<XL, ParamsL> {
     pub x_layer: XL,
     pub params_layer: ParamsL,
-    pub phantom: PhantomData<(Placeholders, Indices)>,
 }
 
-impl<XL, ParamsL, Placeholders, Indices> Affine<XL, ParamsL, Placeholders, Indices> {
+impl<XL, ParamsL> Affine<XL, ParamsL> {
     pub fn new(x_layer: XL, params_layer: ParamsL) -> Self {
         Affine {
             x_layer,
             params_layer,
-            phantom: PhantomData,
         }
     }
 }
 
-impl<XL, ParamsL, Placeholders, Indices> Layer for Affine<XL, ParamsL, Placeholders, Indices>
+impl<XL, ParamsL> Layer for Affine<XL, ParamsL>
 where
     XL: Layer<Output = Array1<f32>>,
     ParamsL: Layer<Output = AffineParams>,
     XL::Backward: LayerBackward,
     ParamsL::Backward: LayerBackward,
     AffineBackward<XL::Backward, ParamsL::Backward>: LayerBackward<Output = Array1<f32>>,
-    Placeholders: Sculptor<XL::Placeholders, Indices, Remainder = ParamsL::Placeholders>,
+    XL::Placeholders: ConcatAndSplit<ParamsL::Placeholders>,
 {
     type Output = Array1<f32>;
     type Backward = AffineBackward<XL::Backward, ParamsL::Backward>;
-    type Placeholders = Placeholders;
+    type Placeholders = <XL::Placeholders as ConcatAndSplit<ParamsL::Placeholders>>::Output;
 
     fn forward(&self, placeholders: Self::Placeholders) -> (Self::Output, Self::Backward) {
-        let (x_placeholders, params_placeholders) =
-            Sculptor::<XL::Placeholders, Indices>::sculpt(placeholders);
+        let (x_placeholders, params_placeholders) = ConcatAndSplit::split(placeholders);
         let (x, x_layer) = self.x_layer.forward(x_placeholders);
         let (params, params_layer) = self.params_layer.forward(params_placeholders);
 
@@ -398,37 +412,30 @@ where
     }
 }
 
-pub struct SoftmaxWithLoss<XL, TL, Placeholders, Indices> {
+pub struct SoftmaxWithLoss<XL, TL> {
     pub x_layer: XL,
     pub t_layer: TL,
-    pub phantom: PhantomData<(Placeholders, Indices)>,
 }
 
-impl<XL, TL, Placeholders, Indices> SoftmaxWithLoss<XL, TL, Placeholders, Indices> {
+impl<XL, TL> SoftmaxWithLoss<XL, TL> {
     pub fn new(x_layer: XL, t_layer: TL) -> Self {
-        SoftmaxWithLoss {
-            x_layer,
-            t_layer,
-            phantom: PhantomData,
-        }
+        SoftmaxWithLoss { x_layer, t_layer }
     }
 }
 
-impl<XL, TL, Placeholders, Indices> Layer for SoftmaxWithLoss<XL, TL, Placeholders, Indices>
+impl<XL, TL> Layer for SoftmaxWithLoss<XL, TL>
 where
     XL: Layer<Output = Array1<f32>>,
     TL: Layer<Output = Array1<f32>>,
     SoftmaxWithLossBackward<XL::Backward, TL::Backward>: LayerBackward<Output = f32>,
-    AffineBackward<XL::Backward, XL::Backward>: LayerBackward<Output = Array1<f32>>,
-    Placeholders: Sculptor<XL::Placeholders, Indices, Remainder = TL::Placeholders>,
+    XL::Placeholders: ConcatAndSplit<TL::Placeholders>,
 {
     type Output = f32;
     type Backward = SoftmaxWithLossBackward<XL::Backward, TL::Backward>;
-    type Placeholders = Placeholders;
+    type Placeholders = <XL::Placeholders as ConcatAndSplit<TL::Placeholders>>::Output;
 
     fn forward(&self, placeholders: Self::Placeholders) -> (Self::Output, Self::Backward) {
-        let (x_placeholders, t_placeholders) =
-            Sculptor::<XL::Placeholders, Indices>::sculpt(placeholders);
+        let (x_placeholders, t_placeholders) = ConcatAndSplit::split(placeholders);
 
         let (x, x_layer) = self.x_layer.forward(x_placeholders);
         let (t, t_layer) = self.t_layer.forward(t_placeholders);

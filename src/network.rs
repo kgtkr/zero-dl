@@ -35,7 +35,7 @@ pub trait LayerBackward {
     type OutputGrad;
 
     // TODO: 最適化みたいな名前に変える
-    fn backward(&self, dout: Self::OutputGrad);
+    fn backward(self, dout: Self::OutputGrad);
 }
 
 pub trait Layer {
@@ -76,7 +76,7 @@ impl<V: NetworkVar> LayerBackward for VariableBackend<V> {
     type Output = V::MutableRef;
     type OutputGrad = V;
 
-    fn backward(&self, dout: Self::OutputGrad) {
+    fn backward(self, dout: Self::OutputGrad) {
         V::optimize(&self.value, &dout, 0.1);
     }
 }
@@ -121,7 +121,7 @@ impl<K, V> LayerBackward for PlaceholderBackend<K, V> {
     type OutputGrad = V;
     type Output = V;
 
-    fn backward(&self, dout: Self::Output) {}
+    fn backward(self, dout: Self::Output) {}
 }
 
 #[derive(Debug, Clone)]
@@ -205,7 +205,7 @@ impl<
     type OutputGrad = Array1<f32>;
     type Output = Array1<f32>;
 
-    fn backward(&self, dout: Self::OutputGrad) {
+    fn backward(self, dout: Self::OutputGrad) {
         let dx = self.params.affine_backward(&dout);
 
         let dw = self
@@ -281,7 +281,7 @@ where
     type Output = Array1<f32>;
     type OutputGrad = XL::OutputGrad;
 
-    fn backward(&self, mut dout: Self::OutputGrad) {
+    fn backward(self, mut dout: Self::OutputGrad) {
         Zip::from(&mut dout).and(&self.x).apply(|dout_x, &x| {
             if x <= 0. {
                 *dout_x = 0.;
@@ -333,7 +333,7 @@ where
     type OutputGrad = f32;
     type Output = f32;
 
-    fn backward(&self, dout: f32) {
+    fn backward(self, dout: f32) {
         let d = &self.y - &self.t;
 
         self.x_layer.backward(d);

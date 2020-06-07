@@ -11,19 +11,6 @@ use std::cell::RefCell;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct NetworkParams(pub Vec<(Array2<f32>, Array1<f32>)>);
-
-impl NetworkParams {
-    pub fn serialize(&self) -> Vec<u8> {
-        bincode::serialize(&self).unwrap()
-    }
-
-    pub fn deserialize(buf: &[u8]) -> Option<NetworkParams> {
-        bincode::deserialize(buf).ok()
-    }
-}
-
 pub trait Optimizer {
     // TODO: これ型クラス作ってOutputの微分値みたいな関連型でまとめたい
     type Output;

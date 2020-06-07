@@ -5,8 +5,8 @@ use ndarray::prelude::*;
 use rand::prelude::*;
 use std::fs::File;
 use zero_dl::layer::{Layer, Optimizer};
+use zero_dl::layers::{Affine, AffineParams, Placeholder, Relu, SoftmaxWithLoss, Variable};
 use zero_dl::mnist::{MnistImages, MnistLabels};
-use zero_dl::network::{Affine, AffineParams, Placeholder, Relu, SoftmaxWithLoss, Variable};
 
 macro_rules! layers {
     ($x: expr,[$prev_n: expr, $n: expr, $next_n: expr, $( $rest: expr, ) *]) => {

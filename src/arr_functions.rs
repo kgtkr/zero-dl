@@ -28,7 +28,7 @@ pub fn identity_arr1(xs: ArrayView1<f32>) -> Array1<f32> {
 
 fn cross_entropy_error_scalar(x: f32, t: f32) -> f32 {
     let delta = 1e-7;
-    t * (x + delta).log(std::f32::consts::E)
+    -t * (x + delta).log(std::f32::consts::E)
 }
 
 pub fn cross_entropy_error(x: ArrayView1<f32>, t: ArrayView1<f32>) -> f32 {

@@ -36,13 +36,13 @@ fn main() {
         File::open("mnist-data/train-labels-idx1-ubyte.gz").unwrap(),
     ))
     .unwrap()
-    .to_data();
+    .to_one_hot();
 
     let train_x = MnistImages::parse(&mut GzDecoder::new(
         File::open("mnist-data/train-images-idx3-ubyte.gz").unwrap(),
     ))
     .unwrap()
-    .to_data();
+    .to_arr2(true);
 
     let test_t = MnistLabels::parse(&mut GzDecoder::new(
         File::open("mnist-data/t10k-labels-idx1-ubyte.gz").unwrap(),
@@ -53,7 +53,7 @@ fn main() {
         File::open("mnist-data/t10k-images-idx3-ubyte.gz").unwrap(),
     ))
     .unwrap()
-    .to_data();
+    .to_arr2(true);
 
     let mut rng = rand::thread_rng();
 

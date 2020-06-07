@@ -23,7 +23,7 @@ impl MnistLabels {
         Some(MnistLabels { labels })
     }
 
-    pub fn to_data(&self) -> Array2<f32> {
+    pub fn to_one_hot(&self) -> Array2<f32> {
         let mut res = Array::zeros((self.labels.len(), 10));
         for i in 0..self.labels.len() {
             res[[i, self.labels[i] as usize]] = 1.;
@@ -66,10 +66,21 @@ impl MnistImages {
         })
     }
 
-    pub fn to_data(&self) -> Array2<f32> {
-        self.images
+    pub fn to_arr2(&self, normalize: bool) -> Array2<f32> {
+        self.to_arr3(normalize)
             .to_shared()
             .reshape((self.images.len_of(Axis(0)), self.width * self.height))
-            .mapv(|x| x as f32 / 255.)
+            .to_owned()
+    }
+
+    pub fn to_arr3(&self, normalize: bool) -> Array3<f32> {
+        self.images.to_shared().mapv(|x| {
+            let x = x as f32;
+            if normalize {
+                x / 255.
+            } else {
+                x
+            }
+        })
     }
 }

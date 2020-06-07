@@ -5,7 +5,7 @@ use ndarray::Zip;
 pub fn softmax_batch(a: ArrayView2<f32>) -> Array2<f32> {
     let c = a.fold(0f32, |a, &b| a.max(b));
     let exp_a = a.map(|x| std::f32::consts::E.powf(x - c));
-    let exp_sum = exp_a.sum_axis(Axis(1));
+    let exp_sum = exp_a.sum_axis(Axis(1)).insert_axis(Axis(1));
     let y = exp_a / exp_sum;
     y
 }

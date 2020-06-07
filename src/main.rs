@@ -79,16 +79,14 @@ fn main() {
             softmax_with_loss.forward(hlist![field![chars::x, x], field![chars::t, t]]);
         optimizer.optimize(1., learning_rate);
 
-        if n % batch_size == batch_size - 1 {
-            println!("i:{} loss:{}", n, loss);
-        }
+        println!("i:{} loss:{}", n, loss);
     }
 
     let res = Zip::from(
         &affine
             .forward(hlist![field![chars::x, test_x]])
             .0
-            .map_axis(Axis(0), |x| max_idx(x)),
+            .map_axis(Axis(1), |x| max_idx(x)),
     )
     .and(&test_t.labels.mapv(|t| t as usize))
     .apply_collect(|x, y| if x == y { 1 } else { 0 });

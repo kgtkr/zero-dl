@@ -74,9 +74,13 @@ pub fn im2col(
         input_data.len_of(Axis(3)) + pad * 2,
     ));
 
-    let pad = pad as isize;
-    img.slice_mut(s![.., .., pad..-pad, pad..-pad])
-        .assign(&input_data);
+    img.slice_mut(s![
+        ..,
+        ..,
+        pad..img.len_of(Axis(2)) - pad,
+        pad..img.len_of(Axis(3)) - pad
+    ])
+    .assign(&input_data);
 
     let mut col = Array::zeros((n, c, filter_h, filter_w, out_h, out_w));
 

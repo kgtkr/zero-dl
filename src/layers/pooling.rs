@@ -93,7 +93,7 @@ where
 impl<XL> Layer for Pooling<XL>
 where
     XL: Layer<Output = Array4<f32>>,
-    PoolingOptimizer<XL::Optimizer>: Optimizer<Output = Array2<f32>>,
+    PoolingOptimizer<XL::Optimizer>: Optimizer<Output = Array4<f32>>,
 {
     type Output = Array4<f32>;
     type Optimizer = PoolingOptimizer<XL::Optimizer>;

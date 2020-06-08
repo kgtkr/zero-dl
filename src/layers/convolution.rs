@@ -161,7 +161,7 @@ where
                 params_optimizer,
                 col,
                 col_W,
-                stride: self.pad,
+                stride: self.stride,
                 pad: self.pad,
             },
         )

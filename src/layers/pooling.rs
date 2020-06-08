@@ -43,6 +43,7 @@ where
             dmax_dim.0 * dmax_dim.1 * dmax_dim.2,
             dmax_len / dmax_dim.0 / dmax_dim.1 / dmax_dim.2,
         ));
+
         let dx = arr_functions::col2im(
             dcol.view(),
             self.x.dim(),

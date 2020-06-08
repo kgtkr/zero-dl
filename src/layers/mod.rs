@@ -18,3 +18,6 @@ pub use convolution::*;
 
 mod pooling;
 pub use pooling::*;
+
+mod n_dim_to_2dim;
+pub use n_dim_to_2dim::*;

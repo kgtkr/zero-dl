@@ -12,3 +12,6 @@ pub use relu::*;
 
 mod softmax_with_loss;
 pub use softmax_with_loss::*;
+
+mod convolution;
+pub use convolution::*;

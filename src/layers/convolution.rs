@@ -1,4 +1,7 @@
+/*
+
 use super::NetworkVar;
+use crate::arr_functions;
 use crate::hlist_extra::ConcatAndSplit;
 use crate::layer::{Layer, LayerOutput, Optimizer};
 use ndarray::prelude::*;
@@ -8,31 +11,31 @@ use ndarray_rand::RandomExt;
 use std::cell::RefCell;
 use std::sync::Arc;
 
-impl LayerOutput for AffineParams {
-    type Grad = AffineParamsValue;
+impl LayerOutput for ConvolutionParams {
+    type Grad = ConvolutionParamsValue;
 }
 
 #[derive(Debug)]
-pub struct AffineParamsValue {
-    pub weight: Array2<f32>,
+pub struct ConvolutionParamsValue {
+    pub weight: Array4<f32>,
     pub bias: Array1<f32>,
 }
 
 #[derive(Debug, Clone)]
-pub struct AffineParams(Arc<RefCell<AffineParamsValue>>);
+pub struct ConvolutionParams(Arc<RefCell<ConvolutionParamsValue>>);
 
-impl AffineParams {
-    pub fn initialize(prev_n: usize, n: usize) -> AffineParams {
+impl ConvolutionParams {
+    pub fn initialize(n: usize, c: usize, h: usize, w: usize) -> ConvolutionParams {
         let weight_init_std = 0.01;
 
-        AffineParams(Arc::new(RefCell::new(AffineParamsValue {
-            weight: Array::random((prev_n, n), Normal::new(0., 1.).unwrap()) * weight_init_std,
+        ConvolutionParams(Arc::new(RefCell::new(ConvolutionParamsValue {
+            weight: Array::random((n, c, h, w), Normal::new(0., 1.).unwrap()) * weight_init_std,
             bias: Array::zeros((n,)),
         })))
     }
 }
 
-impl NetworkVar for AffineParams {
+impl NetworkVar for ConvolutionParams {
     fn optimize(&self, grad: &Self::Grad, learning_rate: f32) {
         let mut value = self.0.borrow_mut();
         Zip::from(&mut value.weight)
@@ -44,30 +47,27 @@ impl NetworkVar for AffineParams {
     }
 }
 
-pub struct AffineOptimizer<XOpz, ParamsOpz> {
+pub struct ConvolutionOptimizer<XOpz, ParamsOpz> {
     pub x_optimizer: XOpz,
     pub params_optimizer: ParamsOpz,
-    pub params: AffineParams,
+    pub params: ConvolutionParams,
     pub x: Array2<f32>,
 }
 
-impl<XOpz: Optimizer<Output = Array2<f32>>, ParamsOpz: Optimizer<Output = AffineParams>> Optimizer
-    for AffineOptimizer<XOpz, ParamsOpz>
+impl<XOpz: Optimizer<Output = Array2<f32>>, ParamsOpz: Optimizer<Output = ConvolutionParams>>
+    Optimizer for ConvolutionOptimizer<XOpz, ParamsOpz>
 {
     type Output = Array2<f32>;
 
     fn optimize(self, dout: <Self::Output as LayerOutput>::Grad, learning_rate: f32) {
-        let dx = {
-            let params = self.params.0.borrow();
-            dout.dot(&params.weight.t())
-        };
+        let dx = self.params.convolution_optimize(&dout);
 
         let dw = self.x.t().dot(&dout);
         let db = dout.sum_axis(Axis(0));
 
         self.x_optimizer.optimize(dx, learning_rate);
         self.params_optimizer.optimize(
-            AffineParamsValue {
+            ConvolutionParamsValue {
                 weight: dw,
                 bias: db,
             },
@@ -76,34 +76,34 @@ impl<XOpz: Optimizer<Output = Array2<f32>>, ParamsOpz: Optimizer<Output = Affine
     }
 }
 
-pub struct Affine<XL, ParamsL> {
+pub struct Convolution<XL, ParamsL> {
     pub x_layer: XL,
     pub params_layer: ParamsL,
 }
 
-impl<XL, ParamsL> Affine<XL, ParamsL>
+impl<XL, ParamsL> Convolution<XL, ParamsL>
 where
     Self: Layer,
 {
     pub fn new(x_layer: XL, params_layer: ParamsL) -> Self {
-        Affine {
+        Convolution {
             x_layer,
             params_layer,
         }
     }
 }
 
-impl<XL, ParamsL> Layer for Affine<XL, ParamsL>
+impl<XL, ParamsL> Layer for Convolution<XL, ParamsL>
 where
     XL: Layer<Output = Array2<f32>>,
-    ParamsL: Layer<Output = AffineParams>,
+    ParamsL: Layer<Output = ConvolutionParams>,
     XL::Optimizer: Optimizer,
     ParamsL::Optimizer: Optimizer,
-    AffineOptimizer<XL::Optimizer, ParamsL::Optimizer>: Optimizer,
+    ConvolutionOptimizer<XL::Optimizer, ParamsL::Optimizer>: Optimizer,
     XL::Placeholders: ConcatAndSplit<ParamsL::Placeholders>,
 {
     type Output = Array2<f32>;
-    type Optimizer = AffineOptimizer<XL::Optimizer, ParamsL::Optimizer>;
+    type Optimizer = ConvolutionOptimizer<XL::Optimizer, ParamsL::Optimizer>;
     type Placeholders = <XL::Placeholders as ConcatAndSplit<ParamsL::Placeholders>>::Output;
 
     fn forward(&self, placeholders: Self::Placeholders) -> (Self::Output, Self::Optimizer) {
@@ -111,14 +111,10 @@ where
         let (x, x_optimizer) = self.x_layer.forward(x_placeholders);
         let (params, params_optimizer) = self.params_layer.forward(params_placeholders);
 
-        let y = {
-            let params = params.0.borrow();
-            x.dot(&params.weight) + &params.bias
-        };
-
+        let y = params.convolution_forward(&x);
         (
             y,
-            AffineOptimizer {
+            ConvolutionOptimizer {
                 params,
                 x,
                 x_optimizer,
@@ -127,3 +123,5 @@ where
         )
     }
 }
+
+*/

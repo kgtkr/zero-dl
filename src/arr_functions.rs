@@ -56,7 +56,7 @@ pub fn sum_squared_error(x: ArrayView1<f32>, t: ArrayView1<f32>) -> f32 {
 }
 
 pub fn im2col(
-    input_data: Array4<f32>,
+    input_data: ArrayView4<f32>,
     filter_h: usize,
     filter_w: usize,
     stride: usize,
@@ -100,7 +100,7 @@ pub fn im2col(
 }
 
 pub fn col2im(
-    col: Array2<f32>,
+    col: ArrayView2<f32>,
     input_shape: (usize, usize, usize, usize),
     filter_h: usize,
     filter_w: usize,

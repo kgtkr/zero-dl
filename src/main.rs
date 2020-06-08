@@ -97,7 +97,7 @@ fn main() {
     let softmax_with_loss = SoftmaxWithLoss::new(&affine2, &t);
 
     let iters_num = 100;
-    let batch_size = 10;
+    let batch_size = 100;
     let learning_rate = 0.1;
 
     for n in 0..iters_num {

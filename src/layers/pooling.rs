@@ -27,7 +27,12 @@ where
         let mut dmax = Array::zeros((dout.len(), pool_size));
 
         let dout_flatten = dout.iter().cloned().collect::<Array1<_>>();
-        for &i in &self.arg_max {
+
+        for &i in self
+            .arg_max
+            .iter()
+            .collect::<std::collections::HashSet<_>>()
+        {
             dmax.slice_mut(s![0..self.arg_max.len(), i])
                 .assign(&dout_flatten);
         }

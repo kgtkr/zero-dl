@@ -62,7 +62,7 @@ impl<XOpz: Optimizer<Output = Array4<f32>>, ParamsOpz: Optimizer<Output = Convol
     type Output = Array4<f32>;
 
     fn optimize(self, dout: <Self::Output as LayerOutput>::Grad, learning_rate: f32) {
-        let (dW, db) = {
+        let (dW, db, dx) = {
             let params = self.params.0.borrow();
             let (FN, C, FH, FW) = params.weight.dim();
             let dout_len = dout.len();
@@ -79,9 +79,10 @@ impl<XOpz: Optimizer<Output = Array4<f32>>, ParamsOpz: Optimizer<Output = Convol
             let dx =
                 arr_functions::col2im(dcol.view(), self.x.dim(), FH, FW, self.stride, self.pad);
 
-            self.x_optimizer.optimize(dx, learning_rate);
-            (dW, db)
+            (dW, db, dx)
         };
+
+        self.x_optimizer.optimize(dx, learning_rate);
 
         self.params_optimizer.optimize(
             ConvolutionParamsValue {

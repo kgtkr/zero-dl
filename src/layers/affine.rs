@@ -109,6 +109,7 @@ where
     fn forward(&self, placeholders: Self::Placeholders) -> (Self::Output, Self::Optimizer) {
         let (x_placeholders, params_placeholders) = ConcatAndSplit::split(placeholders);
         let (x, x_optimizer) = self.x_layer.forward(x_placeholders);
+
         let (params, params_optimizer) = self.params_layer.forward(params_placeholders);
 
         let y = {

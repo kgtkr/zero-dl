@@ -57,6 +57,7 @@ where
             .to_shared()
             .reshape((first_len, x_len / first_len))
             .to_owned();
+
         (
             out,
             NDimTo2DimOptimizer {

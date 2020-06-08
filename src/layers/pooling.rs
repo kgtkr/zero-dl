@@ -32,11 +32,10 @@ where
                 .assign(&dout_flatten);
         }
 
-        let dmax = dmax.to_shared().reshape({
-            let mut tmp = dout.dim();
-            tmp.0 += pool_size;
-            tmp
-        });
+        let dout_dim = dout.dim();
+        let dmax = dmax
+            .to_shared()
+            .reshape((dout_dim.0, dout_dim.1, dout_dim.2, dout_dim.3, pool_size));
 
         let dmax_len = dmax.len();
         let dmax_dim = dmax.dim();

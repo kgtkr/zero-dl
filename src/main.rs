@@ -62,7 +62,7 @@ fn main() {
 
     let mut rng = rand::thread_rng();
 
-    let input_dim = (0, 28, 28);
+    let input_dim = (1, 28, 28);
     let filter_num = 30;
     let filter_size = 5;
     let filter_pad = 0;
@@ -97,7 +97,7 @@ fn main() {
     let softmax_with_loss = SoftmaxWithLoss::new(&affine2, &t);
 
     let iters_num = 100;
-    let batch_size = 100;
+    let batch_size = 10;
     let learning_rate = 0.1;
 
     for n in 0..iters_num {

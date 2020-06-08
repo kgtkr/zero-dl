@@ -73,7 +73,6 @@ pub fn im2col(
         input_data.len_of(Axis(2)) + pad * 2,
         input_data.len_of(Axis(3)) + pad * 2,
     ));
-
     img.slice_mut(s![
         ..,
         ..,
@@ -82,12 +81,16 @@ pub fn im2col(
     ])
     .assign(&input_data);
 
+    let img_w = img.len_of(Axis(2));
+    let img_h = img.len_of(Axis(3));
+
     let mut col = Array::zeros((n, c, filter_h, filter_w, out_h, out_w));
 
     for y in 0..filter_h {
-        let y_max = y + stride * out_h;
+        let y_max = (y + stride * out_h).min(img_h);
         for x in 0..filter_w {
-            let x_max = x + stride * out_w;
+            let x_max = (x + stride * out_w).min(img_w);
+
             col.slice_mut(s![.., .., y, x, .., ..])
                 .assign(&img.slice(s![.., .., y..y_max;stride, x..x_max;stride]));
         }

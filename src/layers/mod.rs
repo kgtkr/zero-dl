@@ -15,3 +15,6 @@ pub use softmax_with_loss::*;
 
 mod convolution;
 pub use convolution::*;
+
+mod pooling;
+pub use pooling::*;

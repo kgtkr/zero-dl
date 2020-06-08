@@ -243,6 +243,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "indexmap"
+version = "1.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c398b2b113b55809ceb9ee3e753fcbac793f1956663f3c36549c1346015c2afe"
+dependencies = [
+ "autocfg",
+]
+
+[[package]]
+name = "itertools"
+version = "0.8.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f56a2d0bc861f9165be4eb3442afd3c236d8a98afd426f65d92324ae1091a484"
+dependencies = [
+ "either",
+]
+
+[[package]]
 name = "lazy_static"
 version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -311,6 +329,30 @@ dependencies = [
  "ndarray",
  "rand",
  "rand_distr",
+]
+
+[[package]]
+name = "ndarray-stats"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0e3da4b73160713dbd0f05af78d31e398b9a9edf70b8c94551f668477dc70618"
+dependencies = [
+ "indexmap",
+ "itertools",
+ "ndarray",
+ "noisy_float",
+ "num-integer",
+ "num-traits",
+ "rand",
+]
+
+[[package]]
+name = "noisy_float"
+version = "0.1.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b1b3e1bd47a70dc23b4b1d4c7dabe09135cf86a5eb2ad5a60c853cb69c64d32e"
+dependencies = [
+ "num-traits",
 ]
 
 [[package]]
@@ -607,6 +649,7 @@ dependencies = [
  "frunk_core",
  "ndarray",
  "ndarray-rand",
+ "ndarray-stats",
  "plotlib",
  "rand",
  "rayon",

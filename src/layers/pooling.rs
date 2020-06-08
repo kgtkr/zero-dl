@@ -32,22 +32,18 @@ where
                 .assign(&dout_flatten);
         }
 
-        let dmax = dmax
-            .into_shape({
-                let mut tmp = dout.dim();
-                tmp.0 += pool_size;
-                tmp
-            })
-            .unwrap();
+        let dmax = dmax.to_shared().reshape({
+            let mut tmp = dout.dim();
+            tmp.0 += pool_size;
+            tmp
+        });
 
         let dmax_len = dmax.len();
         let dmax_dim = dmax.dim();
-        let dcol = dmax
-            .into_shape((
-                dmax_dim.0 * dmax_dim.1 * dmax_dim.2,
-                dmax_len / dmax_dim.0 / dmax_dim.1 / dmax_dim.2,
-            ))
-            .unwrap();
+        let dcol = dmax.to_shared().reshape((
+            dmax_dim.0 * dmax_dim.1 * dmax_dim.2,
+            dmax_len / dmax_dim.0 / dmax_dim.1 / dmax_dim.2,
+        ));
         let dx = arr_functions::col2im(
             dcol.view(),
             self.x.dim(),
@@ -109,19 +105,18 @@ where
         let col =
             arr_functions::im2col(x.view(), self.pool_h, self.pool_w, self.stride, self.pad).0;
         let col_len = col.len();
-        let col = col
-            .into_shape((
-                col_len / self.pool_h / self.pool_w,
-                self.pool_h * self.pool_w,
-            ))
-            .unwrap();
+        let col = col.to_shared().reshape((
+            col_len / self.pool_h / self.pool_w,
+            self.pool_h * self.pool_w,
+        ));
 
         let arg_max = col.map_axis(Axis(1), |x| x.argmax().unwrap());
         let out = col.map_axis(Axis(1), |x| *x.max().unwrap());
         let out = out
-            .into_shape((N, out_h, out_w, C))
-            .unwrap()
-            .permuted_axes([0, 3, 1, 2]);
+            .to_shared()
+            .reshape((N, out_h, out_w, C))
+            .permuted_axes([0, 3, 1, 2])
+            .to_owned();
 
         (
             out,

@@ -14,7 +14,7 @@ where
     type Output = Array2<f32>;
 
     fn optimize(self, dout: <Self::Output as LayerOutput>::Grad, learning_rate: f32) {
-        let dx = dout.into_shape(self.original_x_shape).unwrap();
+        let dx = dout.to_shared().reshape(self.original_x_shape).to_owned();
 
         self.x_optimizer.optimize(dx, learning_rate);
     }
@@ -53,7 +53,10 @@ where
         let first_len = x.shape()[0];
 
         let x_len = x.len();
-        let out = x.into_shape((first_len, x_len / first_len)).unwrap();
+        let out = x
+            .to_shared()
+            .reshape((first_len, x_len / first_len))
+            .to_owned();
         (
             out,
             NDimTo2DimOptimizer {

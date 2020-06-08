@@ -67,12 +67,12 @@ impl<XOpz: Optimizer<Output = Array4<f32>>, ParamsOpz: Optimizer<Output = Convol
         let dout_len = dout.len();
         let dout = dout
             .permuted_axes([0, 2, 3, 1])
-            .into_shape((dout_len / FN, FN))
-            .unwrap();
+            .to_shared()
+            .reshape((dout_len / FN, FN));
 
         let db = dout.sum_axis(Axis(0));
         let dW = self.col.t().dot(&dout);
-        let dW = dW.t().into_shape((FN, C, FH, FW)).unwrap().to_owned();
+        let dW = dW.t().to_shared().reshape((FN, C, FH, FW)).to_owned();
 
         let dcol = dout.dot(&self.col_W.t());
         let dx = arr_functions::col2im(dcol.view(), self.x.dim(), FH, FW, self.stride, self.pad);
@@ -137,18 +137,18 @@ where
             let col = arr_functions::im2col(x.view(), FH, FW, self.stride, self.pad).0;
             let col_W = params
                 .weight
-                .view()
-                .into_shape((FN, C * FH * FW))
-                .unwrap()
+                .to_shared()
+                .reshape((FN, C * FH * FW))
                 .t()
                 .to_owned();
 
             let out = col.dot(&col_W) + &params.bias;
             let out_len = out.len();
             let out = out
-                .into_shape((N, out_h, out_w, out_len / N / out_h / out_w))
-                .unwrap()
-                .permuted_axes([0, 3, 1, 2]);
+                .to_shared()
+                .reshape((N, out_h, out_w, out_len / N / out_h / out_w))
+                .permuted_axes([0, 3, 1, 2])
+                .to_owned();
             (out, col, col_W)
         };
 

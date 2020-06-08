@@ -98,8 +98,9 @@ pub fn im2col(
 
     let col = col
         .permuted_axes([0, 4, 5, 1, 2, 3])
-        .into_shape((n * out_h * out_w, s2))
-        .unwrap();
+        .to_shared()
+        .reshape((n * out_h * out_w, s2))
+        .to_owned();
     (col, out_h, out_w)
 }
 
@@ -115,8 +116,8 @@ pub fn col2im(
     let out_h = (h + 2 * pad - filter_h) / stride + 1;
     let out_w = (w + 2 * pad - filter_w) / stride + 1;
     let col = col
-        .into_shape((n, out_h, out_w, c, filter_h, filter_w))
-        .unwrap()
+        .to_shared()
+        .reshape((n, out_h, out_w, c, filter_h, filter_w))
         .permuted_axes([0, 3, 4, 5, 1, 2]);
 
     let mut img = Array::zeros((n, c, h + 2 * pad + stride - 1, w + 2 * pad + stride - 1));

@@ -62,22 +62,27 @@ impl<XOpz: Optimizer<Output = Array4<f32>>, ParamsOpz: Optimizer<Output = Convol
     type Output = Array4<f32>;
 
     fn optimize(self, dout: <Self::Output as LayerOutput>::Grad, learning_rate: f32) {
-        let params = self.params.0.borrow();
-        let (FN, C, FH, FW) = params.weight.dim();
-        let dout_len = dout.len();
-        let dout = dout
-            .permuted_axes([0, 2, 3, 1])
-            .to_shared()
-            .reshape((dout_len / FN, FN));
+        let (dW, db) = {
+            let params = self.params.0.borrow();
+            let (FN, C, FH, FW) = params.weight.dim();
+            let dout_len = dout.len();
+            let dout = dout
+                .permuted_axes([0, 2, 3, 1])
+                .to_shared()
+                .reshape((dout_len / FN, FN));
 
-        let db = dout.sum_axis(Axis(0));
-        let dW = self.col.t().dot(&dout);
-        let dW = dW.t().to_shared().reshape((FN, C, FH, FW)).to_owned();
+            let db = dout.sum_axis(Axis(0));
+            let dW = self.col.t().dot(&dout);
+            let dW = dW.t().to_shared().reshape((FN, C, FH, FW)).to_owned();
 
-        let dcol = dout.dot(&self.col_W.t());
-        let dx = arr_functions::col2im(dcol.view(), self.x.dim(), FH, FW, self.stride, self.pad);
+            let dcol = dout.dot(&self.col_W.t());
+            let dx =
+                arr_functions::col2im(dcol.view(), self.x.dim(), FH, FW, self.stride, self.pad);
 
-        self.x_optimizer.optimize(dx, learning_rate);
+            self.x_optimizer.optimize(dx, learning_rate);
+            (dW, db)
+        };
+
         self.params_optimizer.optimize(
             ConvolutionParamsValue {
                 weight: dW,

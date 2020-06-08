@@ -1,5 +1,3 @@
-/*
-
 use super::NetworkVar;
 use crate::arr_functions;
 use crate::hlist_extra::ConcatAndSplit;
@@ -51,24 +49,38 @@ pub struct ConvolutionOptimizer<XOpz, ParamsOpz> {
     pub x_optimizer: XOpz,
     pub params_optimizer: ParamsOpz,
     pub params: ConvolutionParams,
-    pub x: Array2<f32>,
+    pub x: Array4<f32>,
+    pub stride: usize,
+    pub pad: usize,
+    pub col: Array2<f32>,
+    pub col_W: Array2<f32>,
 }
 
-impl<XOpz: Optimizer<Output = Array2<f32>>, ParamsOpz: Optimizer<Output = ConvolutionParams>>
+impl<XOpz: Optimizer<Output = Array4<f32>>, ParamsOpz: Optimizer<Output = ConvolutionParams>>
     Optimizer for ConvolutionOptimizer<XOpz, ParamsOpz>
 {
-    type Output = Array2<f32>;
+    type Output = Array4<f32>;
 
     fn optimize(self, dout: <Self::Output as LayerOutput>::Grad, learning_rate: f32) {
-        let dx = self.params.convolution_optimize(&dout);
+        let params = self.params.0.borrow();
+        let (FN, C, FH, FW) = params.weight.dim();
+        let dout_len = dout.len();
+        let dout = dout
+            .permuted_axes([0, 2, 3, 1])
+            .into_shape((dout_len / FN, FN))
+            .unwrap();
 
-        let dw = self.x.t().dot(&dout);
         let db = dout.sum_axis(Axis(0));
+        let dW = self.col.t().dot(&dout);
+        let dW = dW.t().into_shape((FN, C, FH, FW)).unwrap().to_owned();
+
+        let dcol = dout.dot(&self.col_W.t());
+        let dx = arr_functions::col2im(dcol.view(), self.x.dim(), FH, FW, self.stride, self.pad);
 
         self.x_optimizer.optimize(dx, learning_rate);
         self.params_optimizer.optimize(
             ConvolutionParamsValue {
-                weight: dw,
+                weight: dW,
                 bias: db,
             },
             learning_rate,
@@ -79,30 +91,34 @@ impl<XOpz: Optimizer<Output = Array2<f32>>, ParamsOpz: Optimizer<Output = Convol
 pub struct Convolution<XL, ParamsL> {
     pub x_layer: XL,
     pub params_layer: ParamsL,
+    pub stride: usize,
+    pub pad: usize,
 }
 
 impl<XL, ParamsL> Convolution<XL, ParamsL>
 where
     Self: Layer,
 {
-    pub fn new(x_layer: XL, params_layer: ParamsL) -> Self {
+    pub fn new(x_layer: XL, params_layer: ParamsL, stride: usize, pad: usize) -> Self {
         Convolution {
             x_layer,
             params_layer,
+            stride,
+            pad,
         }
     }
 }
 
 impl<XL, ParamsL> Layer for Convolution<XL, ParamsL>
 where
-    XL: Layer<Output = Array2<f32>>,
+    XL: Layer<Output = Array4<f32>>,
     ParamsL: Layer<Output = ConvolutionParams>,
     XL::Optimizer: Optimizer,
     ParamsL::Optimizer: Optimizer,
     ConvolutionOptimizer<XL::Optimizer, ParamsL::Optimizer>: Optimizer,
     XL::Placeholders: ConcatAndSplit<ParamsL::Placeholders>,
 {
-    type Output = Array2<f32>;
+    type Output = Array4<f32>;
     type Optimizer = ConvolutionOptimizer<XL::Optimizer, ParamsL::Optimizer>;
     type Placeholders = <XL::Placeholders as ConcatAndSplit<ParamsL::Placeholders>>::Output;
 
@@ -111,17 +127,43 @@ where
         let (x, x_optimizer) = self.x_layer.forward(x_placeholders);
         let (params, params_optimizer) = self.params_layer.forward(params_placeholders);
 
-        let y = params.convolution_forward(&x);
+        let (out, col, col_W) = {
+            let params = params.0.borrow();
+            let (FN, C, FH, FW) = params.weight.dim();
+            let (N, C, H, W) = x.dim();
+            let out_h = 1 + (H + 2 * self.pad - FH) / self.stride;
+            let out_w = 1 + (W + 2 * self.pad - FW) / self.stride;
+
+            let col = arr_functions::im2col(x.view(), FH, FW, self.stride, self.pad).0;
+            let col_W = params
+                .weight
+                .view()
+                .into_shape((FN, C * FH * FW))
+                .unwrap()
+                .t()
+                .to_owned();
+
+            let out = col.dot(&col_W) + &params.bias;
+            let out_len = out.len();
+            let out = out
+                .into_shape((N, out_h, out_w, out_len / N / out_h / out_w))
+                .unwrap()
+                .permuted_axes([0, 3, 1, 2]);
+            (out, col, col_W)
+        };
+
         (
-            y,
+            out,
             ConvolutionOptimizer {
                 params,
                 x,
                 x_optimizer,
                 params_optimizer,
+                col,
+                col_W,
+                stride: self.pad,
+                pad: self.pad,
             },
         )
     }
 }
-
-*/

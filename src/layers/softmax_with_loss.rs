@@ -44,7 +44,7 @@ impl<XL, TL> Layer for SoftmaxWithLoss<XL, TL>
 where
     XL: Layer<Output = Array2<f32>>,
     TL: Layer<Output = Array2<f32>>,
-    SoftmaxWithLossOptimizer<XL::Optimizer, TL::Optimizer>: Optimizer,
+    SoftmaxWithLossOptimizer<XL::Optimizer, TL::Optimizer>: Optimizer<Output = f32>,
     XL::Placeholders: ConcatAndSplit<TL::Placeholders>,
 {
     type Output = f32;

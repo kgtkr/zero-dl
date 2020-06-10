@@ -99,7 +99,7 @@ where
     ParamsL: Layer<Output = AffineParams>,
     XL::Optimizer: Optimizer,
     ParamsL::Optimizer: Optimizer,
-    AffineOptimizer<XL::Optimizer, ParamsL::Optimizer>: Optimizer,
+    AffineOptimizer<XL::Optimizer, ParamsL::Optimizer>: Optimizer<Output = Array2<f32>>,
     XL::Placeholders: ConcatAndSplit<ParamsL::Placeholders>,
 {
     type Output = Array2<f32>;

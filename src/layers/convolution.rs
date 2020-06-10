@@ -121,7 +121,7 @@ where
     ParamsL: Layer<Output = ConvolutionParams>,
     XL::Optimizer: Optimizer,
     ParamsL::Optimizer: Optimizer,
-    ConvolutionOptimizer<XL::Optimizer, ParamsL::Optimizer>: Optimizer,
+    ConvolutionOptimizer<XL::Optimizer, ParamsL::Optimizer>: Optimizer<Output = Array4<f32>>,
     XL::Placeholders: ConcatAndSplit<ParamsL::Placeholders>,
 {
     type Output = Array4<f32>;

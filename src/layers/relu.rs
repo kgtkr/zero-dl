@@ -45,7 +45,7 @@ where
 impl<XL, D: Dimension> Layer for Relu<XL, D>
 where
     XL: Layer<Output = Array<f32, D>>,
-    ReluOptimizer<XL::Optimizer, D>: Optimizer,
+    ReluOptimizer<XL::Optimizer, D>: Optimizer<Output = Array<f32, D>>,
 {
     type Output = Array<f32, D>;
     type Optimizer = ReluOptimizer<XL::Optimizer, D>;

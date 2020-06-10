@@ -28,8 +28,8 @@ pub trait Optimizer {
 }
 
 pub trait Layer {
-    type Output;
-    type Optimizer: Optimizer;
+    type Output: LayerOutput;
+    type Optimizer: Optimizer<Output = Self::Output>;
     type Placeholders;
 
     fn forward(&self, placeholders: Self::Placeholders) -> (Self::Output, Self::Optimizer);

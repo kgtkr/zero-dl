@@ -49,7 +49,7 @@ where
 {
     type Output = f32;
     type Optimizer = SoftmaxWithLossOptimizer<XL::Optimizer, TL::Optimizer>;
-    type Placeholders = <XL::Placeholders as ConcatAndSplit<TL::Placeholders>>::Output;
+    type Placeholders = <XL::Placeholders as ConcatAndSplit<TL::Placeholders>>::Out;
 
     fn forward(&self, placeholders: Self::Placeholders) -> (Self::Output, Self::Optimizer) {
         let (x_placeholders, t_placeholders) = ConcatAndSplit::split(placeholders);

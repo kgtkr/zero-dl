@@ -1,7 +1,7 @@
 use super::NetworkVar;
 use crate::arr_functions;
 use crate::hlist_extra::ConcatAndSplit;
-use crate::layer::{Layer, LayerOutput, Optimizer};
+use crate::layer::{Layer, LayerValue, Optimizer};
 use ndarray::prelude::*;
 use ndarray::Zip;
 use ndarray_rand::rand_distr::Normal;
@@ -9,7 +9,7 @@ use ndarray_rand::RandomExt;
 use std::cell::RefCell;
 use std::sync::Arc;
 
-impl LayerOutput for ConvolutionParams {
+impl LayerValue for ConvolutionParams {
     type Grad = ConvolutionParamsValue;
 }
 
@@ -61,7 +61,7 @@ impl<XOpz: Optimizer<Output = Array4<f32>>, ParamsOpz: Optimizer<Output = Convol
 {
     type Output = Array4<f32>;
 
-    fn optimize(self, dout: <Self::Output as LayerOutput>::Grad, learning_rate: f32) {
+    fn optimize(self, dout: <Self::Output as LayerValue>::Grad, learning_rate: f32) {
         let (dW, db, dx) = {
             let params = self.params.0.borrow();
             let (FN, C, FH, FW) = params.weight.dim();
@@ -126,7 +126,7 @@ where
 {
     type Output = Array4<f32>;
     type Optimizer = ConvolutionOptimizer<XL::Optimizer, ParamsL::Optimizer>;
-    type Placeholders = <XL::Placeholders as ConcatAndSplit<ParamsL::Placeholders>>::Output;
+    type Placeholders = <XL::Placeholders as ConcatAndSplit<ParamsL::Placeholders>>::Out;
 
     fn forward(&self, placeholders: Self::Placeholders) -> (Self::Output, Self::Optimizer) {
         let (x_placeholders, params_placeholders) = ConcatAndSplit::split(placeholders);

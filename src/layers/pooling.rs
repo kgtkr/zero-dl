@@ -1,5 +1,5 @@
 use crate::arr_functions;
-use crate::layer::{Layer, LayerOutput, Optimizer};
+use crate::layer::{Layer, LayerValue, Optimizer};
 use ndarray::prelude::*;
 use ndarray::Zip;
 use ndarray_stats::QuantileExt;
@@ -20,7 +20,7 @@ where
 {
     type Output = Array4<f32>;
 
-    fn optimize(self, dout: <Self::Output as LayerOutput>::Grad, learning_rate: f32) {
+    fn optimize(self, dout: <Self::Output as LayerValue>::Grad, learning_rate: f32) {
         let dout = dout.permuted_axes([0, 2, 3, 1]);
 
         let pool_size = self.pool_h * self.pool_w;

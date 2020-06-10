@@ -1,4 +1,4 @@
-use crate::layer::{Layer, LayerOutput, Optimizer};
+use crate::layer::{Layer, LayerValue, Optimizer};
 use ndarray::prelude::*;
 use std::marker::PhantomData;
 
@@ -13,7 +13,7 @@ where
 {
     type Output = Array2<f32>;
 
-    fn optimize(self, dout: <Self::Output as LayerOutput>::Grad, learning_rate: f32) {
+    fn optimize(self, dout: <Self::Output as LayerValue>::Grad, learning_rate: f32) {
         let dx = dout.to_shared().reshape(self.original_x_shape).to_owned();
 
         self.x_optimizer.optimize(dx, learning_rate);

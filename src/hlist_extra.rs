@@ -1,23 +1,23 @@
 use frunk::hlist::{HCons, HList, HNil};
 
 pub trait ConcatAndSplit<RHS>: Sized {
-    type Output;
+    type Out;
 
-    fn concat(self, rhs: RHS) -> Self::Output;
-    fn split(output: Self::Output) -> (Self, RHS);
+    fn concat(self, rhs: RHS) -> Self::Out;
+    fn split(output: Self::Out) -> (Self, RHS);
 }
 
 impl<RHS> ConcatAndSplit<RHS> for HNil
 where
     RHS: HList,
 {
-    type Output = RHS;
+    type Out = RHS;
 
-    fn concat(self, rhs: RHS) -> Self::Output {
+    fn concat(self, rhs: RHS) -> Self::Out {
         rhs
     }
 
-    fn split(output: Self::Output) -> (Self, RHS) {
+    fn split(output: Self::Out) -> (Self, RHS) {
         (HNil, output)
     }
 }
@@ -27,16 +27,16 @@ where
     T: ConcatAndSplit<RHS>,
     RHS: HList,
 {
-    type Output = HCons<H, <T as ConcatAndSplit<RHS>>::Output>;
+    type Out = HCons<H, <T as ConcatAndSplit<RHS>>::Out>;
 
-    fn concat(self, rhs: RHS) -> Self::Output {
+    fn concat(self, rhs: RHS) -> Self::Out {
         HCons {
             head: self.head,
             tail: self.tail.concat(rhs),
         }
     }
 
-    fn split(output: Self::Output) -> (Self, RHS) {
+    fn split(output: Self::Out) -> (Self, RHS) {
         let (a, b) = ConcatAndSplit::split(output.tail);
         (
             HCons {

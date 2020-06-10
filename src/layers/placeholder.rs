@@ -1,4 +1,4 @@
-use crate::layer::{Layer, LayerOutput, Optimizer};
+use crate::layer::{Layer, LayerValue, Optimizer};
 use frunk::labelled::Field;
 use frunk::{HCons, HNil};
 use std::marker::PhantomData;
@@ -8,10 +8,10 @@ pub struct PlaceholderOptimizer<K, V> {
     pub phantom: PhantomData<(K, V)>,
 }
 
-impl<K, V: LayerOutput> Optimizer for PlaceholderOptimizer<K, V> {
+impl<K, V: LayerValue> Optimizer for PlaceholderOptimizer<K, V> {
     type Output = V;
 
-    fn optimize(self, dout: <Self::Output as LayerOutput>::Grad, learning_rate: f32) {}
+    fn optimize(self, dout: <Self::Output as LayerValue>::Grad, learning_rate: f32) {}
 }
 
 #[derive(Debug, Clone)]
@@ -30,7 +30,7 @@ where
     }
 }
 
-impl<K, V: LayerOutput> Layer for Placeholder<K, V> {
+impl<K, V: LayerValue> Layer for Placeholder<K, V> {
     type Output = V;
 
     type Optimizer = PlaceholderOptimizer<K, V>;

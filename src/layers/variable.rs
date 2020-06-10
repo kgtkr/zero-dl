@@ -1,7 +1,7 @@
-use crate::layer::{Layer, LayerOutput, Optimizer};
+use crate::layer::{Layer, LayerValue, Optimizer};
 use frunk::HNil;
 
-pub trait NetworkVar: Clone + LayerOutput {
+pub trait NetworkVar: Clone + LayerValue {
     fn optimize(&self, grad: &Self::Grad, learning_rate: f32);
 }
 
@@ -13,7 +13,7 @@ pub struct VariableOptimizer<V: NetworkVar> {
 impl<V: NetworkVar> Optimizer for VariableOptimizer<V> {
     type Output = V;
 
-    fn optimize(self, dout: <Self::Output as LayerOutput>::Grad, learning_rate: f32) {
+    fn optimize(self, dout: <Self::Output as LayerValue>::Grad, learning_rate: f32) {
         &self.value.optimize(&dout, learning_rate);
     }
 }

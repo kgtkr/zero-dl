@@ -1,4 +1,4 @@
-use crate::layer::{Layer, LayerOutput, Optimizer};
+use crate::layer::{Layer, LayerValue, Optimizer};
 use ndarray::prelude::*;
 use ndarray::Zip;
 use std::marker::PhantomData;
@@ -14,7 +14,7 @@ where
 {
     type Output = Array<f32, D>;
 
-    fn optimize(self, mut dout: <Self::Output as LayerOutput>::Grad, learning_rate: f32) {
+    fn optimize(self, mut dout: <Self::Output as LayerValue>::Grad, learning_rate: f32) {
         Zip::from(&mut dout).and(&self.x).apply(|dout_x, &x| {
             if x <= 0. {
                 *dout_x = 0.;

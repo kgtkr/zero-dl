@@ -1,4 +1,6 @@
 use frunk::hlist::{HCons, HList, HNil};
+use frunk::indices::{Here, There};
+use frunk::labelled::Field;
 
 pub trait ConcatAndSplit<RHS>: Sized {
     type Out;
@@ -45,5 +47,30 @@ where
             },
             b,
         )
+    }
+}
+
+pub trait Has<TargetKey, Index> {
+    type TargetValue;
+
+    fn get(&self) -> &Self::TargetValue;
+}
+
+impl<K, V, Tail> Has<K, Here> for HCons<Field<K, V>, Tail> {
+    type TargetValue = V;
+
+    fn get(&self) -> &Self::TargetValue {
+        &self.head.value
+    }
+}
+
+impl<Head, Tail, K, TailIndex> Has<K, There<TailIndex>> for HCons<Head, Tail>
+where
+    Tail: Has<K, TailIndex>,
+{
+    type TargetValue = <Tail as Has<K, TailIndex>>::TargetValue;
+
+    fn get(&self) -> &Self::TargetValue {
+        self.tail.get()
     }
 }

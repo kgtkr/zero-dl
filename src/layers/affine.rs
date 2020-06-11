@@ -1,12 +1,19 @@
 use super::NetworkVar;
-use crate::hlist_extra::ConcatAndSplit;
-use crate::layer::{Layer, LayerValue, Optimizer};
+use crate::layer::{LabelledLayerValues, LayerValue, UnconnectedLayer, UnconnectedOptimizer};
+use frunk::labelled::{ByNameFieldPlucker, Field};
+use frunk::{field, hlist, HNil, Hlist};
 use ndarray::prelude::*;
 use ndarray::Zip;
 use ndarray_rand::rand_distr::Normal;
 use ndarray_rand::RandomExt;
 use std::cell::RefCell;
 use std::sync::Arc;
+
+pub mod idents {
+    use frunk::labelled::chars;
+    pub type params = (chars::p, chars::a, chars::r, chars::a, chars::m, chars::s);
+    pub type x = chars::x;
+}
 
 impl LayerValue for AffineParams {
     type Grad = AffineParamsValue;
@@ -44,19 +51,23 @@ impl NetworkVar for AffineParams {
     }
 }
 
-pub struct AffineOptimizer<XOpz, ParamsOpz> {
-    pub x_optimizer: XOpz,
-    pub params_optimizer: ParamsOpz,
+pub struct AffineOptimizer {
     pub params: AffineParams,
     pub x: Array2<f32>,
 }
 
-impl<XOpz: Optimizer<Output = Array2<f32>>, ParamsOpz: Optimizer<Output = AffineParams>> Optimizer
-    for AffineOptimizer<XOpz, ParamsOpz>
-{
+impl UnconnectedOptimizer for AffineOptimizer {
+    type Inputs = Hlist![
+        Field<idents::params, AffineParams>,
+        Field<idents::x, Array2<f32>>
+    ];
     type Output = Array2<f32>;
 
-    fn optimize(self, dout: <Self::Output as LayerValue>::Grad, learning_rate: f32) {
+    fn optimize(
+        self,
+        dout: <Self::Output as LayerValue>::Grad,
+        learning_rate: f32,
+    ) -> <Self::Inputs as LabelledLayerValues>::Grads {
         let dx = {
             let params = self.params.0.borrow();
             dout.dot(&params.weight.t())
@@ -65,66 +76,56 @@ impl<XOpz: Optimizer<Output = Array2<f32>>, ParamsOpz: Optimizer<Output = Affine
         let dw = self.x.t().dot(&dout);
         let db = dout.sum_axis(Axis(0));
 
-        self.x_optimizer.optimize(dx, learning_rate);
-        self.params_optimizer.optimize(
-            AffineParamsValue {
-                weight: dw,
-                bias: db,
-            },
-            learning_rate,
-        );
+        hlist![
+            field![
+                idents::params,
+                AffineParamsValue {
+                    weight: dw,
+                    bias: db,
+                }
+            ],
+            field![idents::x, dx]
+        ]
     }
 }
 
-pub struct Affine<XL, ParamsL> {
-    pub x_layer: XL,
-    pub params_layer: ParamsL,
-}
+pub struct Affine {}
 
-impl<XL, ParamsL> Affine<XL, ParamsL>
+impl Affine
 where
-    Self: Layer,
+    Self: UnconnectedLayer,
 {
-    pub fn new(x_layer: XL, params_layer: ParamsL) -> Self {
-        Affine {
-            x_layer,
-            params_layer,
-        }
+    pub fn new() -> Self {
+        Affine {}
     }
 }
 
-impl<XL, ParamsL> Layer for Affine<XL, ParamsL>
+impl UnconnectedLayer for Affine
 where
-    XL: Layer<Output = Array2<f32>>,
-    ParamsL: Layer<Output = AffineParams>,
-    XL::Optimizer: Optimizer,
-    ParamsL::Optimizer: Optimizer,
-    AffineOptimizer<XL::Optimizer, ParamsL::Optimizer>: Optimizer<Output = Array2<f32>>,
-    XL::Placeholders: ConcatAndSplit<ParamsL::Placeholders>,
+    AffineOptimizer: UnconnectedOptimizer<Output = Array2<f32>>,
 {
+    type Inputs = Hlist![
+        Field<idents::params, AffineParams>,
+        Field<idents::x, Array2<f32>>
+    ];
+    type Placeholders = HNil;
     type Output = Array2<f32>;
-    type Optimizer = AffineOptimizer<XL::Optimizer, ParamsL::Optimizer>;
-    type Placeholders = <XL::Placeholders as ConcatAndSplit<ParamsL::Placeholders>>::Out;
+    type Optimizer = AffineOptimizer;
 
-    fn forward(&self, placeholders: Self::Placeholders) -> (Self::Output, Self::Optimizer) {
-        let (x_placeholders, params_placeholders) = ConcatAndSplit::split(placeholders);
-        let (x, x_optimizer) = self.x_layer.forward(x_placeholders);
-
-        let (params, params_optimizer) = self.params_layer.forward(params_placeholders);
-
+    fn forward(
+        &self,
+        HNil: Self::Placeholders,
+        inputs: Self::Inputs,
+    ) -> (Self::Output, Self::Optimizer) {
+        let (Field { value: params, .. }, inputs) =
+            ByNameFieldPlucker::<idents::params, _>::pluck_by_name(inputs);
+        let (Field { value: x, .. }, HNil) =
+            ByNameFieldPlucker::<idents::x, _>::pluck_by_name(inputs);
         let y = {
-            let params = params.0.borrow();
-            x.dot(&params.weight) + &params.bias
+            let params_ref = params.0.borrow();
+            x.dot(&params_ref.weight) + &params_ref.bias
         };
 
-        (
-            y,
-            AffineOptimizer {
-                params,
-                x,
-                x_optimizer,
-                params_optimizer,
-            },
-        )
+        (y, AffineOptimizer { params, x })
     }
 }

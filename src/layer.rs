@@ -136,7 +136,10 @@ pub trait UnconnectedLayer: Sized {
 
     type Optimizer: UnconnectedOptimizer<Inputs = Self::Inputs, Output = Self::Output>;
 
-    fn join<I>(self, input_layers: I) -> LayerAdapter<I, Self> {
+    fn join<I>(self, input_layers: I) -> LayerAdapter<I, Self>
+    where
+        LayerAdapter<I, Self>: Layer,
+    {
         LayerAdapter {
             input_layers,
             layer: self,

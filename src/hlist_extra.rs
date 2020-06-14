@@ -6,11 +6,9 @@ use frunk::labelled::Field;
 macro_rules! record {
     ( $( $key: ident: $value: expr ),* ) => {
         {
-            use frunk_labelled_proc_macro::label;
-
-            hlist![
-                $( field![
-                    label!($key),
+            frunk::hlist![
+                $( frunk::field![
+                    frunk_labelled_proc_macro::label!($key),
                     $value
                 ]),*
             ]
@@ -20,24 +18,35 @@ macro_rules! record {
 
 #[macro_export]
 macro_rules! record_dest {
-    ( { $( $ident: ident: $key: ident ),* } = $record: expr ) => {
-        use frunk::labelled::ByNameFieldPlucker;
-        use frunk::labelled::Field;
+    ( { } = $record: ident ) => {
+        let frunk::hlist::HNil = $record;
+    };
 
+    ( { .. } = $record: ident ) => {
+        let _ = $record;
+    };
+
+    ( { ..$ident: ident } = $record: ident ) => {
+        let $ident = $record;
+    };
+
+    ( { $key: ident, $( $tt: tt )* } = $record: ident ) => {
+        record_dest!({ $key: $key, $( $tt )* } = $record);
+    };
+
+    ( { $key: ident : $ident: ident, $( $tt: tt )* } = $record: ident ) => {
         let record = $record;
-        $(
-            let (Field { value: $ident, .. }, record) =
-                ByNameFieldPlucker::<label!($key), _>::pluck_by_name(record);
-        )*
-        let HNil = record;
+        let (frunk::labelled::Field { value: $ident, .. }, record) =
+        frunk::labelled::ByNameFieldPlucker::<frunk_labelled_proc_macro::label!($key), _>::pluck_by_name(record);
+        record_dest!({ $( $tt )* } = record);
     };
 }
 
 #[macro_export]
 macro_rules! Record {
     ( $( $key: ident: $type: ty ),* ) => {
-        Hlist![
-            $( Field<label!($key), $type> ),*
+        frunk::Hlist![
+            $( Field<frunk_labelled_proc_macro::label!($key), $type> ),*
         ]
     };
 }

@@ -14,12 +14,6 @@ use ndarray_rand::RandomExt;
 use std::cell::RefCell;
 use std::sync::Arc;
 
-pub mod idents {
-    use frunk::labelled::chars;
-    pub type params = (chars::p, chars::a, chars::r, chars::a, chars::m, chars::s);
-    pub type x = chars::x;
-}
-
 impl LayerValue for ConvolutionParams {
     type Grad = ConvolutionParamsValue;
 }
@@ -66,10 +60,10 @@ pub struct ConvolutionOptimizer {
 }
 
 impl UnconnectedOptimizer for ConvolutionOptimizer {
-    type Inputs = Hlist![
-        Field<idents::params, ConvolutionParams>,
-        Field<idents::x, Array4<f32>>
-    ];
+    type Inputs = Record! {
+        params: ConvolutionParams,
+        x: Array4<f32>
+    };
     type Output = Array4<f32>;
 
     fn optimize(
@@ -97,16 +91,13 @@ impl UnconnectedOptimizer for ConvolutionOptimizer {
             (dW, db, dx)
         };
 
-        hlist![
-            field![
-                idents::params,
-                ConvolutionParamsValue {
-                    weight: dW,
-                    bias: db,
-                }
-            ],
-            field![idents::x, dx]
-        ]
+        record! {
+            params: ConvolutionParamsValue {
+                weight: dW,
+                bias: db,
+            },
+            x: dx
+        }
     }
 }
 
@@ -122,10 +113,10 @@ impl Convolution {
 }
 
 impl UnconnectedLayer for Convolution {
-    type Inputs = Hlist![
-        Field<idents::params, ConvolutionParams>,
-        Field<idents::x, Array4<f32>>
-    ];
+    type Inputs = Record! {
+        params: ConvolutionParams,
+        x: Array4<f32>
+    };
     type Output = Array4<f32>;
     type Optimizer = ConvolutionOptimizer;
     type Placeholders = HNil;
@@ -135,10 +126,10 @@ impl UnconnectedLayer for Convolution {
         placeholders: Self::Placeholders,
         inputs: Self::Inputs,
     ) -> (Self::Output, Self::Optimizer) {
-        let (Field { value: params, .. }, inputs) =
-            ByNameFieldPlucker::<idents::params, _>::pluck_by_name(inputs);
-        let (Field { value: x, .. }, HNil) =
-            ByNameFieldPlucker::<idents::x, _>::pluck_by_name(inputs);
+        record_dest!({
+            params,
+            x,
+        } = inputs);
 
         let (out, col, col_W) = {
             let params = params.0.borrow();

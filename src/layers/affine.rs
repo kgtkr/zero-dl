@@ -104,8 +104,8 @@ impl UnconnectedLayer for Affine {
         inputs: Self::Inputs,
     ) -> (Self::Output, Self::Optimizer) {
         record_dest!({
-            params: params,
-            x: x
+            params,
+            x,
         } = inputs);
         let y = {
             let params_ref = params.0.borrow();

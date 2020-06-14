@@ -61,7 +61,10 @@ fn main() {
         filter_size,
         filter_size,
     ));
-    let conv1 = Convolution::new(&x, &params1, filter_stride, filter_pad);
+    let conv1 = Convolution::new(filter_stride, filter_pad).join(hlist![
+        field![affine::idents::params, &params1],
+        field![affine::idents::x, &x]
+    ]);
     let relu1 = Relu::new(&conv1);
     let pool1 = Pooling::new(&relu1, 2, 2, 2, 0);
 

@@ -1,13 +1,24 @@
 use super::NetworkVar;
 use crate::arr_functions;
 use crate::hlist_extra::ConcatAndSplit;
+use crate::layer::UnconnectedLayer;
+use crate::layer::{LabelledLayerValues, UnconnectedOptimizer};
 use crate::layer::{Layer, LayerValue, Optimizer};
+use frunk::labelled::{ByNameFieldPlucker, Field};
+use frunk::HNil;
+use frunk::{field, hlist, Hlist};
 use ndarray::prelude::*;
 use ndarray::Zip;
 use ndarray_rand::rand_distr::Normal;
 use ndarray_rand::RandomExt;
 use std::cell::RefCell;
 use std::sync::Arc;
+
+pub mod idents {
+    use frunk::labelled::chars;
+    pub type params = (chars::p, chars::a, chars::r, chars::a, chars::m, chars::s);
+    pub type x = chars::x;
+}
 
 impl LayerValue for ConvolutionParams {
     type Grad = ConvolutionParamsValue;
@@ -45,9 +56,7 @@ impl NetworkVar for ConvolutionParams {
     }
 }
 
-pub struct ConvolutionOptimizer<XOpz, ParamsOpz> {
-    pub x_optimizer: XOpz,
-    pub params_optimizer: ParamsOpz,
+pub struct ConvolutionOptimizer {
     pub params: ConvolutionParams,
     pub x: Array4<f32>,
     pub stride: usize,
@@ -56,12 +65,18 @@ pub struct ConvolutionOptimizer<XOpz, ParamsOpz> {
     pub col_W: Array2<f32>,
 }
 
-impl<XOpz: Optimizer<Output = Array4<f32>>, ParamsOpz: Optimizer<Output = ConvolutionParams>>
-    Optimizer for ConvolutionOptimizer<XOpz, ParamsOpz>
-{
+impl UnconnectedOptimizer for ConvolutionOptimizer {
+    type Inputs = Hlist![
+        Field<idents::params, ConvolutionParams>,
+        Field<idents::x, Array4<f32>>
+    ];
     type Output = Array4<f32>;
 
-    fn optimize(self, dout: <Self::Output as LayerValue>::Grad, learning_rate: f32) {
+    fn optimize(
+        self,
+        dout: <Self::Output as LayerValue>::Grad,
+        learning_rate: f32,
+    ) -> <Self::Inputs as LabelledLayerValues>::Grads {
         let (dW, db, dx) = {
             let params = self.params.0.borrow();
             let (FN, C, FH, FW) = params.weight.dim();
@@ -82,56 +97,48 @@ impl<XOpz: Optimizer<Output = Array4<f32>>, ParamsOpz: Optimizer<Output = Convol
             (dW, db, dx)
         };
 
-        self.x_optimizer.optimize(dx, learning_rate);
-
-        self.params_optimizer.optimize(
-            ConvolutionParamsValue {
-                weight: dW,
-                bias: db,
-            },
-            learning_rate,
-        );
+        hlist![
+            field![
+                idents::params,
+                ConvolutionParamsValue {
+                    weight: dW,
+                    bias: db,
+                }
+            ],
+            field![idents::x, dx]
+        ]
     }
 }
 
-pub struct Convolution<XL, ParamsL> {
-    pub x_layer: XL,
-    pub params_layer: ParamsL,
+pub struct Convolution {
     pub stride: usize,
     pub pad: usize,
 }
 
-impl<XL, ParamsL> Convolution<XL, ParamsL>
-where
-    Self: Layer,
-{
-    pub fn new(x_layer: XL, params_layer: ParamsL, stride: usize, pad: usize) -> Self {
-        Convolution {
-            x_layer,
-            params_layer,
-            stride,
-            pad,
-        }
+impl Convolution {
+    pub fn new(stride: usize, pad: usize) -> Self {
+        Convolution { stride, pad }
     }
 }
 
-impl<XL, ParamsL> Layer for Convolution<XL, ParamsL>
-where
-    XL: Layer<Output = Array4<f32>>,
-    ParamsL: Layer<Output = ConvolutionParams>,
-    XL::Optimizer: Optimizer,
-    ParamsL::Optimizer: Optimizer,
-    ConvolutionOptimizer<XL::Optimizer, ParamsL::Optimizer>: Optimizer<Output = Array4<f32>>,
-    XL::Placeholders: ConcatAndSplit<ParamsL::Placeholders>,
-{
+impl UnconnectedLayer for Convolution {
+    type Inputs = Hlist![
+        Field<idents::params, ConvolutionParams>,
+        Field<idents::x, Array4<f32>>
+    ];
     type Output = Array4<f32>;
-    type Optimizer = ConvolutionOptimizer<XL::Optimizer, ParamsL::Optimizer>;
-    type Placeholders = <XL::Placeholders as ConcatAndSplit<ParamsL::Placeholders>>::Out;
+    type Optimizer = ConvolutionOptimizer;
+    type Placeholders = HNil;
 
-    fn forward(&self, placeholders: Self::Placeholders) -> (Self::Output, Self::Optimizer) {
-        let (x_placeholders, params_placeholders) = ConcatAndSplit::split(placeholders);
-        let (x, x_optimizer) = self.x_layer.forward(x_placeholders);
-        let (params, params_optimizer) = self.params_layer.forward(params_placeholders);
+    fn forward(
+        &self,
+        placeholders: Self::Placeholders,
+        inputs: Self::Inputs,
+    ) -> (Self::Output, Self::Optimizer) {
+        let (Field { value: params, .. }, inputs) =
+            ByNameFieldPlucker::<idents::params, _>::pluck_by_name(inputs);
+        let (Field { value: x, .. }, HNil) =
+            ByNameFieldPlucker::<idents::x, _>::pluck_by_name(inputs);
 
         let (out, col, col_W) = {
             let params = params.0.borrow();
@@ -163,8 +170,6 @@ where
             ConvolutionOptimizer {
                 params,
                 x,
-                x_optimizer,
-                params_optimizer,
                 col,
                 col_W,
                 stride: self.stride,

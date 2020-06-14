@@ -91,19 +91,13 @@ impl UnconnectedOptimizer for AffineOptimizer {
 
 pub struct Affine {}
 
-impl Affine
-where
-    Self: UnconnectedLayer,
-{
+impl Affine {
     pub fn new() -> Self {
         Affine {}
     }
 }
 
-impl UnconnectedLayer for Affine
-where
-    AffineOptimizer: UnconnectedOptimizer<Output = Array2<f32>>,
-{
+impl UnconnectedLayer for Affine {
     type Inputs = Hlist![
         Field<idents::params, AffineParams>,
         Field<idents::x, Array2<f32>>

@@ -1,3 +1,6 @@
+#[macro_use]
+extern crate zero_dl;
+
 use flate2::read::GzDecoder;
 use frunk::labelled::chars;
 use frunk::labelled::Field;
@@ -61,26 +64,26 @@ fn main() {
         filter_size,
         filter_size,
     ));
-    let conv1 = Convolution::new(filter_stride, filter_pad).join(hlist![
-        field![affine::idents::params, &params1],
-        field![affine::idents::x, &x]
-    ]);
+    let conv1 = Convolution::new(filter_stride, filter_pad).join(record! {
+        params: &params1,
+        x: &x
+    });
     let relu1 = Relu::new(&conv1);
     let pool1 = Pooling::new(&relu1, 2, 2, 2, 0);
 
     let nto2 = NDimTo2Dim::new(&pool1);
     let params2 = Variable::new(AffineParams::initialize(pool_output_size, hidden_size));
-    let affine1 = Affine::new().join(hlist![
-        field![affine::idents::params, &params2],
-        field![affine::idents::x, &nto2]
-    ]);
+    let affine1 = Affine::new().join(record! {
+        params: &params2,
+        x: &nto2
+    });
     let relu2 = Relu::new(&affine1);
 
     let params3 = Variable::new(AffineParams::initialize(hidden_size, output_size));
-    let affine2 = Affine::new().join(hlist![
-        field![affine::idents::params, &params3],
-        field![affine::idents::x, &relu2]
-    ]);
+    let affine2 = Affine::new().join(record! {
+        params: &params3,
+        x: &relu2
+    });
 
     let softmax_with_loss = SoftmaxWithLoss::new(&affine2, &t);
 

@@ -2,6 +2,46 @@ use frunk::hlist::{HCons, HList, HNil};
 use frunk::indices::{Here, There};
 use frunk::labelled::Field;
 
+#[macro_export]
+macro_rules! record {
+    ( $( $key: ident: $value: expr ),* ) => {
+        {
+            use frunk_labelled_proc_macro::label;
+
+            hlist![
+                $( field![
+                    label!($key),
+                    $value
+                ]),*
+            ]
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! record_dest {
+    ( { $( $ident: ident: $key: ident ),* } = $record: expr ) => {
+        use frunk::labelled::ByNameFieldPlucker;
+        use frunk::labelled::Field;
+
+        let record = $record;
+        $(
+            let (Field { value: $ident, .. }, record) =
+                ByNameFieldPlucker::<label!($key), _>::pluck_by_name(record);
+        )*
+        let HNil = record;
+    };
+}
+
+#[macro_export]
+macro_rules! Record {
+    ( $( $key: ident: $type: ty ),* ) => {
+        Hlist![
+            $( Field<label!($key), $type> ),*
+        ]
+    };
+}
+
 pub trait ConcatAndSplit<RHS>: Sized {
     type Out;
 

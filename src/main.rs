@@ -93,7 +93,10 @@ fn main() {
         x: &relu2
     });
 
-    let softmax_with_loss = SoftmaxWithLoss::new(&affine2, &t);
+    let softmax_with_loss = SoftmaxWithLoss::new().join(record! {
+        x: &affine2,
+        t: &t
+    });
 
     let iters_num = 100;
     let batch_size = 100;

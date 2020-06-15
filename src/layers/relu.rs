@@ -1,59 +1,68 @@
-use crate::layer::{Layer, LayerValue, Optimizer};
+use crate::layer::{
+    LabelledLayerValues, Layer, LayerValue, Optimizer, UnconnectedLayer, UnconnectedOptimizer,
+};
+use frunk::{HCons, HNil};
 use ndarray::prelude::*;
 use ndarray::Zip;
 use std::marker::PhantomData;
 
-pub struct ReluOptimizer<XOpz, D> {
+pub struct ReluOptimizer<D> {
     pub x: Array<f32, D>,
-    pub x_optimizer: XOpz,
 }
 
-impl<XOpz, D: Dimension> Optimizer for ReluOptimizer<XOpz, D>
-where
-    XOpz: Optimizer<Output = Array<f32, D>>,
-{
+impl<D: Dimension> UnconnectedOptimizer for ReluOptimizer<D> {
+    type Inputs = Record! {
+        x: Array<f32, D>
+    };
     type Output = Array<f32, D>;
 
-    fn optimize(self, mut dout: <Self::Output as LayerValue>::Grad, learning_rate: f32) {
+    fn optimize(
+        self,
+        mut dout: <Self::Output as LayerValue>::Grad,
+        learning_rate: f32,
+    ) -> <Self::Inputs as LabelledLayerValues>::Grads {
         Zip::from(&mut dout).and(&self.x).apply(|dout_x, &x| {
             if x <= 0. {
                 *dout_x = 0.;
             }
         });
 
-        self.x_optimizer.optimize(dout, learning_rate);
+        record! {
+            x: dout
+        }
     }
 }
 
-pub struct Relu<XL, D> {
-    pub x_layer: XL,
+pub struct Relu<D> {
     pub phantom: PhantomData<D>,
 }
 
-impl<XL, D: Dimension> Relu<XL, D>
-where
-    Self: Layer,
-{
-    pub fn new(x_layer: XL) -> Self {
+impl<D: Dimension> Relu<D> {
+    pub fn new() -> Self {
         Relu {
-            x_layer,
             phantom: PhantomData,
         }
     }
 }
 
-impl<XL, D: Dimension> Layer for Relu<XL, D>
-where
-    XL: Layer<Output = Array<f32, D>>,
-    ReluOptimizer<XL::Optimizer, D>: Optimizer<Output = Array<f32, D>>,
-{
+impl<D: Dimension> UnconnectedLayer for Relu<D> {
+    type Inputs = Record! {
+        x: Array<f32, D>
+    };
     type Output = Array<f32, D>;
-    type Optimizer = ReluOptimizer<XL::Optimizer, D>;
-    type Placeholders = XL::Placeholders;
+    type Optimizer = ReluOptimizer<D>;
+    type Placeholders = HNil;
 
-    fn forward(&self, placeholders: Self::Placeholders) -> (Self::Output, Self::Optimizer) {
-        let (x, x_optimizer) = self.x_layer.forward(placeholders);
+    fn forward(
+        &self,
+        placeholders: Self::Placeholders,
+        inputs: Self::Inputs,
+    ) -> (Self::Output, Self::Optimizer) {
+        record_dest!({
+            x,
+        } = inputs);
+
         let y = x.mapv(|x| x.max(0.));
-        (y, ReluOptimizer { x, x_optimizer })
+        (y, ReluOptimizer { x })
     }
 }

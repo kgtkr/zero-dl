@@ -68,7 +68,9 @@ fn main() {
         params: &params1,
         x: &x
     });
-    let relu1 = Relu::new(&conv1);
+    let relu1 = Relu::new().join(record! {
+        x: &conv1
+    });
     let pool1 = Pooling::new(2, 2, 2, 0).join(record! {
         x: &relu1
     });
@@ -81,7 +83,9 @@ fn main() {
         params: &params2,
         x: &nto2
     });
-    let relu2 = Relu::new(&affine1);
+    let relu2 = Relu::new().join(record! {
+        x: &affine1
+    });
 
     let params3 = Variable::new(AffineParams::initialize(hidden_size, output_size));
     let affine2 = Affine::new().join(record! {

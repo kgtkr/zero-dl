@@ -1,23 +1,23 @@
-pub mod affine;
+mod affine;
 pub use affine::*;
 
-pub mod variable;
+mod variable;
 pub use variable::*;
 
-pub mod placeholder;
+mod placeholder;
 pub use placeholder::*;
 
-pub mod relu;
+mod relu;
 pub use relu::*;
 
-pub mod softmax_with_loss;
-pub use softmax_with_loss::*;
+mod softmax_cross_entropy;
+pub use softmax_cross_entropy::*;
 
-pub mod convolution;
+mod convolution;
 pub use convolution::*;
 
-pub mod pooling;
+mod pooling;
 pub use pooling::*;
 
-pub mod n_dim_to_2dim;
+mod n_dim_to_2dim;
 pub use n_dim_to_2dim::*;

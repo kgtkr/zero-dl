@@ -11,8 +11,8 @@ use rand::prelude::*;
 use std::fs::File;
 use zero_dl::layer::{LabelledOptimizers, Layer, Optimizer, UnconnectedLayer};
 use zero_dl::layers::{
-    affine, Affine, AffineParams, Convolution, ConvolutionParams, NDimTo2Dim, Placeholder, Pooling,
-    Relu, SoftmaxWithLoss, Variable,
+    Affine, AffineParams, Convolution, ConvolutionParams, NDimTo2Dim, Placeholder, Pooling, Relu,
+    SoftmaxCrossEntropy, Variable,
 };
 use zero_dl::mnist::{MnistImages, MnistLabels};
 
@@ -93,7 +93,7 @@ fn main() {
         x: &relu2
     });
 
-    let softmax_with_loss = SoftmaxWithLoss::new().join(record! {
+    let softmax_with_loss = SoftmaxCrossEntropy::new().join(record! {
         x: &affine2,
         t: &t
     });

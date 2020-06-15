@@ -4,12 +4,12 @@ use crate::layer::{LabelledLayerValues, Layer, Optimizer, UnconnectedLayer, Unco
 use frunk::HNil;
 use ndarray::prelude::*;
 
-pub struct SoftmaxWithLossOptimizer {
+pub struct SoftmaxCrossEntropyOptimizer {
     pub y: Array2<f32>,
     pub t: Array2<f32>,
 }
 
-impl UnconnectedOptimizer for SoftmaxWithLossOptimizer {
+impl UnconnectedOptimizer for SoftmaxCrossEntropyOptimizer {
     type Inputs = Record! {
         x: Array2<f32>,
         t: Array2<f32>
@@ -35,21 +35,21 @@ impl UnconnectedOptimizer for SoftmaxWithLossOptimizer {
     }
 }
 
-pub struct SoftmaxWithLoss {}
+pub struct SoftmaxCrossEntropy {}
 
-impl SoftmaxWithLoss {
+impl SoftmaxCrossEntropy {
     pub fn new() -> Self {
-        SoftmaxWithLoss {}
+        SoftmaxCrossEntropy {}
     }
 }
 
-impl UnconnectedLayer for SoftmaxWithLoss {
+impl UnconnectedLayer for SoftmaxCrossEntropy {
     type Inputs = Record! {
         x: Array2<f32>,
         t: Array2<f32>
     };
     type Output = f32;
-    type Optimizer = SoftmaxWithLossOptimizer;
+    type Optimizer = SoftmaxCrossEntropyOptimizer;
     type Placeholders = HNil;
 
     fn forward(
@@ -65,6 +65,6 @@ impl UnconnectedLayer for SoftmaxWithLoss {
         let y = arr_functions::softmax_batch(x.view());
         let loss = arr_functions::cross_entropy_error_batch(y.view(), t.view());
 
-        (loss, SoftmaxWithLossOptimizer { t, y })
+        (loss, SoftmaxCrossEntropyOptimizer { t, y })
     }
 }

@@ -63,7 +63,8 @@ fn main() {
         input_dim.0,
         filter_size,
         filter_size,
-    ));
+    ))
+    .join(record! {});
     let conv1 = Convolution::new(filter_stride, filter_pad).join(record! {
         params: &params1,
         x: &x
@@ -78,7 +79,8 @@ fn main() {
     let nto2 = NDimTo2Dim::new().join(record! {
         x: &pool1
     });
-    let params2 = Variable::new(AffineParams::initialize(pool_output_size, hidden_size));
+    let params2 =
+        Variable::new(AffineParams::initialize(pool_output_size, hidden_size)).join(record! {});
     let affine1 = Affine::new().join(record! {
         params: &params2,
         x: &nto2
@@ -87,7 +89,8 @@ fn main() {
         x: &affine1
     });
 
-    let params3 = Variable::new(AffineParams::initialize(hidden_size, output_size));
+    let params3 =
+        Variable::new(AffineParams::initialize(hidden_size, output_size)).join(record! {});
     let affine2 = Affine::new().join(record! {
         params: &params3,
         x: &relu2

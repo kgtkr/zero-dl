@@ -1,4 +1,6 @@
-use crate::layer::{Layer, LayerValue, Optimizer};
+use crate::layer::{
+    LabelledLayerValues, Layer, LayerValue, Optimizer, UnconnectedLayer, UnconnectedOptimizer,
+};
 use frunk::HNil;
 
 pub trait NetworkVar: Clone + LayerValue {
@@ -10,11 +12,18 @@ pub struct VariableOptimizer<V: NetworkVar> {
     pub value: V,
 }
 
-impl<V: NetworkVar> Optimizer for VariableOptimizer<V> {
+impl<V: NetworkVar> UnconnectedOptimizer for VariableOptimizer<V> {
+    type Inputs = Record! {};
     type Output = V;
 
-    fn optimize(self, dout: <Self::Output as LayerValue>::Grad, learning_rate: f32) {
+    fn optimize(
+        self,
+        dout: <Self::Output as LayerValue>::Grad,
+        learning_rate: f32,
+    ) -> <Self::Inputs as LabelledLayerValues>::Grads {
         &self.value.optimize(&dout, learning_rate);
+
+        record! {}
     }
 }
 
@@ -23,23 +32,25 @@ pub struct Variable<V: NetworkVar> {
     pub value: V,
 }
 
-impl<V: NetworkVar> Variable<V>
-where
-    Self: Layer,
-{
+impl<V: NetworkVar> Variable<V> {
     pub fn new(value: V) -> Self {
         Variable { value }
     }
 }
 
-impl<V: NetworkVar> Layer for Variable<V> {
+impl<V: NetworkVar> UnconnectedLayer for Variable<V> {
+    type Inputs = Record! {};
     type Output = V;
-
     type Optimizer = VariableOptimizer<V>;
-
     type Placeholders = HNil;
 
-    fn forward(&self, placeholders: Self::Placeholders) -> (Self::Output, Self::Optimizer) {
+    fn forward(
+        &self,
+        placeholders: Self::Placeholders,
+        inputs: Self::Inputs,
+    ) -> (Self::Output, Self::Optimizer) {
+        record_dest!({} = inputs);
+
         (
             self.value.clone(),
             VariableOptimizer {

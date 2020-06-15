@@ -71,7 +71,9 @@ fn main() {
     let relu1 = Relu::new(&conv1);
     let pool1 = Pooling::new(&relu1, 2, 2, 2, 0);
 
-    let nto2 = NDimTo2Dim::new(&pool1);
+    let nto2 = NDimTo2Dim::new().join(record! {
+        x: &pool1
+    });
     let params2 = Variable::new(AffineParams::initialize(pool_output_size, hidden_size));
     let affine1 = Affine::new().join(record! {
         params: &params2,

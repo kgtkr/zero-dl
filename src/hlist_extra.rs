@@ -46,7 +46,7 @@ macro_rules! record_dest {
 macro_rules! Record {
     ( $( $key: ident: $type: ty ),* ) => {
         frunk::Hlist![
-            $( Field<frunk_labelled_proc_macro::label!($key), $type> ),*
+            $( frunk::labelled::Field<frunk_labelled_proc_macro::label!($key), $type> ),*
         ]
     };
 }

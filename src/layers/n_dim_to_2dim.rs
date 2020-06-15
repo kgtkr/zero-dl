@@ -1,53 +1,61 @@
-use crate::layer::{Layer, LayerValue, Optimizer};
+use crate::layer::{
+    LabelledLayerValues, Layer, LayerValue, Optimizer, UnconnectedLayer, UnconnectedOptimizer,
+};
+use frunk::{HCons, HNil};
 use ndarray::prelude::*;
 use std::marker::PhantomData;
 
-pub struct NDimTo2DimOptimizer<XOpz, D: Dimension> {
+pub struct NDimTo2DimOptimizer<D: Dimension> {
     pub original_x_shape: D::Pattern,
-    pub x_optimizer: XOpz,
 }
 
-impl<XOpz, D: Dimension> Optimizer for NDimTo2DimOptimizer<XOpz, D>
-where
-    XOpz: Optimizer<Output = Array<f32, D>>,
-{
+impl<D: Dimension> UnconnectedOptimizer for NDimTo2DimOptimizer<D> {
+    type Inputs = Record! {
+        x: Array<f32, D>
+    };
     type Output = Array2<f32>;
 
-    fn optimize(self, dout: <Self::Output as LayerValue>::Grad, learning_rate: f32) {
+    fn optimize(
+        self,
+        dout: <Self::Output as LayerValue>::Grad,
+        learning_rate: f32,
+    ) -> <Self::Inputs as LabelledLayerValues>::Grads {
         let dx = dout.to_shared().reshape(self.original_x_shape).to_owned();
 
-        self.x_optimizer.optimize(dx, learning_rate);
+        record! {
+            x: dx
+        }
     }
 }
 
-pub struct NDimTo2Dim<XL, D> {
-    pub x_layer: XL,
+pub struct NDimTo2Dim<D> {
     pub phantom: PhantomData<D>,
 }
 
-impl<XL, D> NDimTo2Dim<XL, D>
-where
-    Self: Layer,
-{
-    pub fn new(x_layer: XL) -> NDimTo2Dim<XL, D> {
+impl<D> NDimTo2Dim<D> {
+    pub fn new() -> NDimTo2Dim<D> {
         NDimTo2Dim {
-            x_layer,
             phantom: PhantomData,
         }
     }
 }
 
-impl<XL, D: Dimension> Layer for NDimTo2Dim<XL, D>
-where
-    XL: Layer<Output = Array<f32, D>>,
-    NDimTo2DimOptimizer<XL::Optimizer, D>: Optimizer<Output = Array2<f32>>,
-{
+impl<D: Dimension> UnconnectedLayer for NDimTo2Dim<D> {
+    type Inputs = Record! {
+        x: Array<f32, D>
+    };
     type Output = Array2<f32>;
-    type Optimizer = NDimTo2DimOptimizer<XL::Optimizer, D>;
-    type Placeholders = XL::Placeholders;
+    type Optimizer = NDimTo2DimOptimizer<D>;
+    type Placeholders = HNil;
 
-    fn forward(&self, placeholders: Self::Placeholders) -> (Self::Output, Self::Optimizer) {
-        let (x, x_optimizer) = self.x_layer.forward(placeholders);
+    fn forward(
+        &self,
+        placeholders: Self::Placeholders,
+        inputs: Self::Inputs,
+    ) -> (Self::Output, Self::Optimizer) {
+        record_dest!({
+            x,
+        } = inputs);
 
         let original_x_shape = x.dim();
         let first_len = x.shape()[0];
@@ -58,12 +66,6 @@ where
             .reshape((first_len, x_len / first_len))
             .to_owned();
 
-        (
-            out,
-            NDimTo2DimOptimizer {
-                original_x_shape,
-                x_optimizer,
-            },
-        )
+        (out, NDimTo2DimOptimizer { original_x_shape })
     }
 }

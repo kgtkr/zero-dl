@@ -1,12 +1,14 @@
 use crate::arr_functions;
-use crate::layer::{Layer, LayerValue, Optimizer};
+use crate::layer::{
+    LabelledLayerValues, Layer, LayerValue, Optimizer, UnconnectedLayer, UnconnectedOptimizer,
+};
+use frunk::{HCons, HNil};
 use ndarray::prelude::*;
 use ndarray::Zip;
 use ndarray_stats::QuantileExt;
 
-pub struct PoolingOptimizer<XOpz> {
+pub struct PoolingOptimizer {
     pub x: Array4<f32>,
-    pub x_optimizer: XOpz,
     pub arg_max: Array1<usize>,
     pub pool_h: usize,
     pub pool_w: usize,
@@ -14,13 +16,17 @@ pub struct PoolingOptimizer<XOpz> {
     pub pad: usize,
 }
 
-impl<XOpz> Optimizer for PoolingOptimizer<XOpz>
-where
-    XOpz: Optimizer<Output = Array4<f32>>,
-{
+impl UnconnectedOptimizer for PoolingOptimizer {
+    type Inputs = Record! {
+        x: Array4<f32>
+    };
     type Output = Array4<f32>;
 
-    fn optimize(self, dout: <Self::Output as LayerValue>::Grad, learning_rate: f32) {
+    fn optimize(
+        self,
+        dout: <Self::Output as LayerValue>::Grad,
+        learning_rate: f32,
+    ) -> <Self::Inputs as LabelledLayerValues>::Grads {
         let dout = dout.permuted_axes([0, 2, 3, 1]);
 
         let pool_size = self.pool_h * self.pool_w;
@@ -58,31 +64,22 @@ where
             self.pad,
         );
 
-        self.x_optimizer.optimize(dx, learning_rate);
+        record! {
+            x: dx
+        }
     }
 }
 
-pub struct Pooling<XL> {
-    pub x_layer: XL,
+pub struct Pooling {
     pub pool_h: usize,
     pub pool_w: usize,
     pub stride: usize,
     pub pad: usize,
 }
 
-impl<XL> Pooling<XL>
-where
-    Self: Layer,
-{
-    pub fn new(
-        x_layer: XL,
-        pool_h: usize,
-        pool_w: usize,
-        stride: usize,
-        pad: usize,
-    ) -> Pooling<XL> {
+impl Pooling {
+    pub fn new(pool_h: usize, pool_w: usize, stride: usize, pad: usize) -> Pooling {
         Pooling {
-            x_layer,
             pool_h,
             pool_w,
             stride,
@@ -91,17 +88,22 @@ where
     }
 }
 
-impl<XL> Layer for Pooling<XL>
-where
-    XL: Layer<Output = Array4<f32>>,
-    PoolingOptimizer<XL::Optimizer>: Optimizer<Output = Array4<f32>>,
-{
+impl UnconnectedLayer for Pooling {
+    type Inputs = Record! {
+        x: Array4<f32>
+    };
     type Output = Array4<f32>;
-    type Optimizer = PoolingOptimizer<XL::Optimizer>;
-    type Placeholders = XL::Placeholders;
+    type Optimizer = PoolingOptimizer;
+    type Placeholders = HNil;
 
-    fn forward(&self, placeholders: Self::Placeholders) -> (Self::Output, Self::Optimizer) {
-        let (x, x_optimizer) = self.x_layer.forward(placeholders);
+    fn forward(
+        &self,
+        placeholders: Self::Placeholders,
+        inputs: Self::Inputs,
+    ) -> (Self::Output, Self::Optimizer) {
+        record_dest!({
+            x,
+        } = inputs);
 
         let (N, C, H, W) = x.dim();
         let out_h = 1 + (H - self.pool_h) / self.stride;
@@ -127,7 +129,6 @@ where
             out,
             PoolingOptimizer {
                 x,
-                x_optimizer,
                 arg_max,
                 stride: self.stride,
                 pool_h: self.pool_h,

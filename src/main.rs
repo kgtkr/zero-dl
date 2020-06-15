@@ -69,7 +69,9 @@ fn main() {
         x: &x
     });
     let relu1 = Relu::new(&conv1);
-    let pool1 = Pooling::new(&relu1, 2, 2, 2, 0);
+    let pool1 = Pooling::new(2, 2, 2, 0).join(record! {
+        x: &relu1
+    });
 
     let nto2 = NDimTo2Dim::new().join(record! {
         x: &pool1

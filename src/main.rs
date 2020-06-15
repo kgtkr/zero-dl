@@ -2,9 +2,9 @@
 extern crate zero_dl;
 
 use flate2::read::GzDecoder;
-use frunk::labelled::chars;
 use frunk::labelled::Field;
 use frunk::{field, hlist, HCons, HNil};
+use frunk_labelled_proc_macro::label;
 use ndarray::prelude::*;
 use ndarray::Zip;
 use rand::prelude::*;
@@ -55,8 +55,8 @@ fn main() {
     let conv_output_size = (input_size - filter_size + 2 * filter_pad) / filter_stride + 1;
     let pool_output_size = filter_num * (conv_output_size / 2) * (conv_output_size / 2);
 
-    let x = Placeholder::<chars::x, Array4<f32>>::new().join(record! {});
-    let t = Placeholder::<chars::t, Array2<f32>>::new().join(record! {});
+    let x = Placeholder::<label!(x), Array4<f32>>::new().join(record! {});
+    let t = Placeholder::<label!(t), Array2<f32>>::new().join(record! {});
 
     let params1 = Variable::new(ConvolutionParams::initialize(
         filter_num,
@@ -112,17 +112,16 @@ fn main() {
 
         let x = train_x.select(Axis(0), &ixs[..]);
         let t = train_t.select(Axis(0), &ixs[..]);
-        let (loss, optimizer) =
-            softmax_with_loss.forward(hlist![field![chars::x, x], field![chars::t, t]]);
+        let (loss, optimizer) = softmax_with_loss.forward(record! {
+            x:x,
+            t:t
+        });
         optimizer.optimize(1., learning_rate);
 
         println!("i:{} loss:{}", n, loss);
     }
 
-    let (ac, per) = ac_per(
-        &affine2.forward(hlist![field![chars::x, test_x]]).0,
-        &test_t.labels,
-    );
+    let (ac, per) = ac_per(&affine2.forward(record! {x:test_x}).0, &test_t.labels);
 
     println!("{}/{}", ac, per);
 }

@@ -55,8 +55,8 @@ fn main() {
     let conv_output_size = (input_size - filter_size + 2 * filter_pad) / filter_stride + 1;
     let pool_output_size = filter_num * (conv_output_size / 2) * (conv_output_size / 2);
 
-    let x = Placeholder::<chars::x, Array4<f32>>::new();
-    let t = Placeholder::<chars::t, Array2<f32>>::new();
+    let x = Placeholder::<chars::x, Array4<f32>>::new().join(record! {});
+    let t = Placeholder::<chars::t, Array2<f32>>::new().join(record! {});
 
     let params1 = Variable::new(ConvolutionParams::initialize(
         filter_num,

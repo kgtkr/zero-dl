@@ -123,3 +123,32 @@ where
         self.tail.get()
     }
 }
+
+pub trait ToMutRef {
+    type Output<'a>;
+
+    fn to_mut(&mut self) -> Self::Output;
+}
+
+impl ToMutRef for HNil {
+    type Output<'a> = HNil;
+
+    fn to_mut(&mut self) -> Self::Output {
+        HNil
+    }
+}
+
+impl<H, Tail> ToMutRef for HCons<H, Tail>
+where
+    for<'a> H: 'a,
+    Tail: ToMutRef,
+{
+    type Output<'a> = HCons<&'a mut H, <Tail as ToMutRef>::Output>;
+
+    fn to_mut(&mut self) -> Self::Output {
+        HCons {
+            head: &mut self.head,
+            tail: self.tail.to_mut(),
+        }
+    }
+}

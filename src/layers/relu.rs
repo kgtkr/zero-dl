@@ -1,6 +1,5 @@
-use crate::layer::{
-    LabelledLayerValues, Layer, LayerValue, Optimizer, UnconnectedLayer, UnconnectedOptimizer,
-};
+use crate::layer::{Layer, Optimizer, UnconnectedLayer, UnconnectedOptimizer};
+use frunk::traits::ToMut;
 use frunk::{HCons, HNil};
 use ndarray::prelude::*;
 use ndarray::Zip;
@@ -15,12 +14,14 @@ impl<D: Dimension> UnconnectedOptimizer for ReluOptimizer<D> {
         x: Array<f32, D>
     };
     type Output = Array<f32, D>;
+    type Variables = HNil;
 
-    fn optimize(
+    fn optimize<'a>(
         self,
-        mut dout: <Self::Output as LayerValue>::Grad,
+        mut dout: Self::Output,
+        variables: <Self::Variables as ToMut<'a>>::Output,
         learning_rate: f32,
-    ) -> <Self::Inputs as LabelledLayerValues>::Grads {
+    ) -> Self::Inputs {
         Zip::from(&mut dout).and(&self.x).apply(|dout_x, &x| {
             if x <= 0. {
                 *dout_x = 0.;
@@ -37,7 +38,10 @@ pub struct Relu<D> {
     pub phantom: PhantomData<D>,
 }
 
-impl<D: Dimension> Relu<D> {
+impl<D: Dimension> Relu<D>
+where
+    Self: UnconnectedLayer,
+{
     pub fn new() -> Self {
         Relu {
             phantom: PhantomData,
@@ -52,10 +56,12 @@ impl<D: Dimension> UnconnectedLayer for Relu<D> {
     type Output = Array<f32, D>;
     type Optimizer = ReluOptimizer<D>;
     type Placeholders = HNil;
+    type Variables = HNil;
 
     fn forward(
         &self,
         placeholders: Self::Placeholders,
+        variables: Self::Variables,
         inputs: Self::Inputs,
     ) -> (Self::Output, Self::Optimizer) {
         record_dest!({

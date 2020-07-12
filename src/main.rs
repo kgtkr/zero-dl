@@ -2,17 +2,17 @@
 extern crate zero_dl;
 
 use flate2::read::GzDecoder;
-use frunk::labelled::Field;
+use frunk::labelled::{Field, Transmogrifier};
 use frunk::{field, hlist, HCons, HNil};
 use frunk_labelled_proc_macro::label;
 use ndarray::prelude::*;
 use ndarray::Zip;
 use rand::prelude::*;
 use std::fs::File;
-use zero_dl::layer::{LabelledOptimizers, Layer, Optimizer, UnconnectedLayer};
+use zero_dl::layer::{LabelledLayers, LabelledOptimizers, Layer, Optimizer, UnconnectedLayer};
 use zero_dl::layers::{
-    Affine, AffineParams, Convolution, ConvolutionParams, NDimTo2Dim, Placeholder, Pooling, Relu,
-    SoftmaxCrossEntropy, Variable,
+    initialize_random, initialize_zero, Affine, Convolution, NDimTo2Dim, Placeholder, Pooling,
+    Relu, SoftmaxCrossEntropy, Variable,
 };
 use zero_dl::mnist::{MnistImages, MnistLabels};
 
@@ -58,16 +58,21 @@ fn main() {
     let x = Placeholder::<label!(x), Array4<f32>>::new().join(record! {});
     let t = Placeholder::<label!(t), Array2<f32>>::new().join(record! {});
 
-    let params1 = Variable::new(ConvolutionParams::initialize(
-        filter_num,
-        input_dim.0,
-        filter_size,
-        filter_size,
-    ))
-    .join(record! {});
+    let mut variables = record! {
+        weight1: initialize_random((filter_num, input_dim.0, filter_size, filter_size)),
+        bias1: initialize_zero((filter_num,)),
+        weight2: initialize_random((pool_output_size, hidden_size)),
+        bias2: initialize_zero((hidden_size,)),
+        weight3: initialize_random((hidden_size, output_size)),
+        bias3: initialize_zero((output_size,))
+    };
+
+    let weight1 = Variable::<label!(weight1), Ix4>::new().join(record! {});
+    let bias1 = Variable::<label!(bias1), Ix1>::new().join(record! {});
     let conv1 = Convolution::new(filter_stride, filter_pad).join(record! {
-        params: &params1,
-        x: &x
+        x: &x,
+        weight: &weight1,
+        bias: &bias1
     });
     let relu1 = Relu::new().join(record! {
         x: &conv1
@@ -79,21 +84,24 @@ fn main() {
     let nto2 = NDimTo2Dim::new().join(record! {
         x: &pool1
     });
-    let params2 =
-        Variable::new(AffineParams::initialize(pool_output_size, hidden_size)).join(record! {});
+
+    let weight2 = Variable::<label!(weight2), Ix2>::new().join(record! {});
+    let bias2 = Variable::<label!(bias2), Ix1>::new().join(record! {});
     let affine1 = Affine::new().join(record! {
-        params: &params2,
-        x: &nto2
+        x: &nto2,
+        weight: &weight2,
+        bias: &bias2
     });
     let relu2 = Relu::new().join(record! {
         x: &affine1
     });
 
-    let params3 =
-        Variable::new(AffineParams::initialize(hidden_size, output_size)).join(record! {});
+    let weight3 = Variable::<label!(weight3), Ix2>::new().join(record! {});
+    let bias3 = Variable::<label!(bias3), Ix1>::new().join(record! {});
     let affine2 = Affine::new().join(record! {
-        params: &params3,
-        x: &relu2
+        x: &relu2,
+        weight: &weight3,
+        bias: &bias3
     });
 
     let softmax_with_loss = SoftmaxCrossEntropy::new().join(record! {
@@ -112,16 +120,22 @@ fn main() {
 
         let x = train_x.select(Axis(0), &ixs[..]);
         let t = train_t.select(Axis(0), &ixs[..]);
-        let (loss, optimizer) = softmax_with_loss.forward(record! {
-            x:x,
-            t:t
-        });
-        optimizer.optimize(1., learning_rate);
+        let (loss, optimizer) = softmax_with_loss.forward(
+            record! {
+                x: x,
+                t: t
+            },
+            variables.clone(),
+        );
+        optimizer.optimize(1., variables.to_mut(), learning_rate);
 
         println!("i:{} loss:{}", n, loss);
     }
 
-    let (ac, per) = ac_per(&affine2.forward(record! {x:test_x}).0, &test_t.labels);
+    let (ac, per) = ac_per(
+        &affine2.forward(record! { x: test_x }, variables.clone()).0,
+        &test_t.labels,
+    );
 
     println!("{}/{}", ac, per);
 }

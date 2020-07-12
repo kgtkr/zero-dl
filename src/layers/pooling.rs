@@ -1,7 +1,6 @@
 use crate::arr_functions;
-use crate::layer::{
-    LabelledLayerValues, Layer, LayerValue, Optimizer, UnconnectedLayer, UnconnectedOptimizer,
-};
+use crate::layer::{Layer, Optimizer, UnconnectedLayer, UnconnectedOptimizer};
+use frunk::traits::ToMut;
 use frunk::{HCons, HNil};
 use ndarray::prelude::*;
 use ndarray::Zip;
@@ -21,12 +20,14 @@ impl UnconnectedOptimizer for PoolingOptimizer {
         x: Array4<f32>
     };
     type Output = Array4<f32>;
+    type Variables = HNil;
 
-    fn optimize(
+    fn optimize<'a>(
         self,
-        dout: <Self::Output as LayerValue>::Grad,
+        dout: Self::Output,
+        variables: <Self::Variables as ToMut<'a>>::Output,
         learning_rate: f32,
-    ) -> <Self::Inputs as LabelledLayerValues>::Grads {
+    ) -> Self::Inputs {
         let dout = dout.permuted_axes([0, 2, 3, 1]);
 
         let pool_size = self.pool_h * self.pool_w;
@@ -77,7 +78,10 @@ pub struct Pooling {
     pub pad: usize,
 }
 
-impl Pooling {
+impl Pooling
+where
+    Self: UnconnectedLayer,
+{
     pub fn new(pool_h: usize, pool_w: usize, stride: usize, pad: usize) -> Pooling {
         Pooling {
             pool_h,
@@ -95,10 +99,12 @@ impl UnconnectedLayer for Pooling {
     type Output = Array4<f32>;
     type Optimizer = PoolingOptimizer;
     type Placeholders = HNil;
+    type Variables = HNil;
 
     fn forward(
         &self,
         placeholders: Self::Placeholders,
+        variables: Self::Variables,
         inputs: Self::Inputs,
     ) -> (Self::Output, Self::Optimizer) {
         record_dest!({

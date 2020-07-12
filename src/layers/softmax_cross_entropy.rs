@@ -1,6 +1,6 @@
 use crate::arr_functions;
-use crate::hlist_extra::ConcatAndSplit;
-use crate::layer::{LabelledLayerValues, Layer, Optimizer, UnconnectedLayer, UnconnectedOptimizer};
+use crate::layer::{Layer, Optimizer, UnconnectedLayer, UnconnectedOptimizer};
+use frunk::traits::ToMut;
 use frunk::HNil;
 use ndarray::prelude::*;
 
@@ -15,12 +15,14 @@ impl UnconnectedOptimizer for SoftmaxCrossEntropyOptimizer {
         t: Array2<f32>
     };
     type Output = f32;
+    type Variables = HNil;
 
-    fn optimize(
+    fn optimize<'a>(
         self,
         dout: f32,
+        variables: <Self::Variables as ToMut<'a>>::Output,
         learning_rate: f32,
-    ) -> <Self::Inputs as LabelledLayerValues>::Grads {
+    ) -> Self::Inputs {
         let batch_size = self.t.len_of(Axis(0));
         let dx = (&self.y - &self.t) / batch_size as f32;
 
@@ -37,7 +39,10 @@ impl UnconnectedOptimizer for SoftmaxCrossEntropyOptimizer {
 
 pub struct SoftmaxCrossEntropy {}
 
-impl SoftmaxCrossEntropy {
+impl SoftmaxCrossEntropy
+where
+    Self: UnconnectedLayer,
+{
     pub fn new() -> Self {
         SoftmaxCrossEntropy {}
     }
@@ -51,10 +56,12 @@ impl UnconnectedLayer for SoftmaxCrossEntropy {
     type Output = f32;
     type Optimizer = SoftmaxCrossEntropyOptimizer;
     type Placeholders = HNil;
+    type Variables = HNil;
 
     fn forward(
         &self,
         placeholders: Self::Placeholders,
+        variables: Self::Variables,
         inputs: Self::Inputs,
     ) -> (Self::Output, Self::Optimizer) {
         record_dest!({

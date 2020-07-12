@@ -1,6 +1,5 @@
-use crate::layer::{
-    LabelledLayerValues, Layer, LayerValue, Optimizer, UnconnectedLayer, UnconnectedOptimizer,
-};
+use crate::layer::{Layer, Optimizer, UnconnectedLayer, UnconnectedOptimizer};
+use frunk::traits::ToMut;
 use frunk::{HCons, HNil};
 use ndarray::prelude::*;
 use std::marker::PhantomData;
@@ -14,12 +13,14 @@ impl<D: Dimension> UnconnectedOptimizer for NDimTo2DimOptimizer<D> {
         x: Array<f32, D>
     };
     type Output = Array2<f32>;
+    type Variables = HNil;
 
-    fn optimize(
+    fn optimize<'a>(
         self,
-        dout: <Self::Output as LayerValue>::Grad,
+        dout: Self::Output,
+        variables: <Self::Variables as ToMut<'a>>::Output,
         learning_rate: f32,
-    ) -> <Self::Inputs as LabelledLayerValues>::Grads {
+    ) -> Self::Inputs {
         let dx = dout.to_shared().reshape(self.original_x_shape).to_owned();
 
         record! {
@@ -32,7 +33,10 @@ pub struct NDimTo2Dim<D> {
     pub phantom: PhantomData<D>,
 }
 
-impl<D> NDimTo2Dim<D> {
+impl<D> NDimTo2Dim<D>
+where
+    Self: UnconnectedLayer,
+{
     pub fn new() -> NDimTo2Dim<D> {
         NDimTo2Dim {
             phantom: PhantomData,
@@ -47,10 +51,12 @@ impl<D: Dimension> UnconnectedLayer for NDimTo2Dim<D> {
     type Output = Array2<f32>;
     type Optimizer = NDimTo2DimOptimizer<D>;
     type Placeholders = HNil;
+    type Variables = HNil;
 
     fn forward(
         &self,
         placeholders: Self::Placeholders,
+        variables: Self::Variables,
         inputs: Self::Inputs,
     ) -> (Self::Output, Self::Optimizer) {
         record_dest!({

@@ -2,7 +2,6 @@ use frunk::hlist::{HCons, HList, HNil};
 use frunk::indices::{Here, There};
 use frunk::labelled::Field;
 use frunk::traits::ToMut;
-use std::ops::Add;
 
 #[macro_export]
 macro_rules! record {
@@ -91,14 +90,29 @@ pub trait Concat<Rhs>: Sized {
     fn concat(self, rhs: Rhs) -> Self::Output;
 }
 
-impl<R> Concat<R> for R
+impl<Rhs> Concat<Rhs> for HNil
 where
-    Self: Add<R>,
+    Rhs: HList,
 {
-    type Output = <Self as Add<R>>::Output;
+    type Output = Rhs;
 
-    fn concat(self, rhs: R) -> Self::Output {
-        self + rhs
+    fn concat(self, rhs: Rhs) -> Rhs {
+        rhs
+    }
+}
+
+impl<H, T, Rhs> Concat<Rhs> for HCons<H, T>
+where
+    T: Concat<Rhs>,
+    Rhs: HList,
+{
+    type Output = HCons<H, <T as Concat<Rhs>>::Output>;
+
+    fn concat(self, rhs: Rhs) -> Self::Output {
+        HCons {
+            head: self.head,
+            tail: self.tail.concat(rhs),
+        }
     }
 }
 

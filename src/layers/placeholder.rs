@@ -1,7 +1,6 @@
-use crate::layer::{
-    LabelledLayerValues, Layer, LayerValue, Optimizer, UnconnectedLayer, UnconnectedOptimizer,
-};
+use crate::layer::{Layer, Optimizer, UnconnectedLayer, UnconnectedOptimizer};
 use frunk::labelled::Field;
+use frunk::traits::ToMut;
 use frunk::{HCons, HNil};
 use std::marker::PhantomData;
 
@@ -10,15 +9,17 @@ pub struct PlaceholderOptimizer<K, V> {
     pub phantom: PhantomData<(K, V)>,
 }
 
-impl<K, V: LayerValue> UnconnectedOptimizer for PlaceholderOptimizer<K, V> {
+impl<K, V> UnconnectedOptimizer for PlaceholderOptimizer<K, V> {
     type Inputs = Record! {};
     type Output = V;
+    type Variables = HNil;
 
-    fn optimize(
+    fn optimize<'a>(
         self,
-        dout: <Self::Output as LayerValue>::Grad,
+        dout: Self::Output,
+        variables: <Self::Variables as ToMut<'a>>::Output,
         learning_rate: f32,
-    ) -> <Self::Inputs as LabelledLayerValues>::Grads {
+    ) -> Self::Inputs {
         record! {}
     }
 }
@@ -28,7 +29,10 @@ pub struct Placeholder<K, V> {
     pub phantom: PhantomData<(K, V)>,
 }
 
-impl<K, V> Placeholder<K, V> {
+impl<K, V> Placeholder<K, V>
+where
+    Self: UnconnectedLayer,
+{
     pub fn new() -> Self {
         Placeholder {
             phantom: PhantomData,
@@ -36,15 +40,17 @@ impl<K, V> Placeholder<K, V> {
     }
 }
 
-impl<K, V: LayerValue> UnconnectedLayer for Placeholder<K, V> {
+impl<K, V> UnconnectedLayer for Placeholder<K, V> {
     type Inputs = Record! {};
     type Output = V;
     type Optimizer = PlaceholderOptimizer<K, V>;
     type Placeholders = HCons<Field<K, V>, HNil>;
+    type Variables = HNil;
 
     fn forward(
         &self,
         placeholders: Self::Placeholders,
+        variables: Self::Variables,
         inputs: Self::Inputs,
     ) -> (Self::Output, Self::Optimizer) {
         record_dest!({} = inputs);

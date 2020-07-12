@@ -1,6 +1,7 @@
 use frunk::hlist::{HCons, HList, HNil};
 use frunk::indices::{Here, There};
 use frunk::labelled::Field;
+use std::ops::Add;
 
 #[macro_export]
 macro_rules! record {
@@ -49,6 +50,40 @@ macro_rules! Record {
             $( frunk::labelled::Field<frunk_labelled_proc_macro::label!($key), $type> ),*
         ]
     };
+}
+
+trait Concat<RHS> = Add<RHS>;
+
+pub trait Split<LHS>: Sized {
+    type RHS;
+
+    fn split(self) -> (LHS, Self::RHS);
+}
+
+impl<T> Split<HNil> for T {
+    type RHS = T;
+
+    fn split(self) -> (HNil, Self::RHS) {
+        (HNil, self)
+    }
+}
+
+impl<Head, LTail, RTail> Split<HCons<Head, LTail>> for HCons<Head, RTail>
+where
+    RTail: Split<LTail>,
+{
+    type RHS = <RTail as Split<LTail>>::RHS;
+
+    fn split(self) -> (HCons<Head, LTail>, Self::RHS) {
+        let (l, r) = self.tail.split();
+        (
+            HCons {
+                head: self.head,
+                tail: l,
+            },
+            r,
+        )
+    }
 }
 
 pub trait ConcatAndSplit<RHS>: Sized {
@@ -121,34 +156,5 @@ where
 
     fn get(&self) -> &Self::TargetValue {
         self.tail.get()
-    }
-}
-
-pub trait ToMutRef {
-    type Output<'a>;
-
-    fn to_mut(&mut self) -> Self::Output;
-}
-
-impl ToMutRef for HNil {
-    type Output<'a> = HNil;
-
-    fn to_mut(&mut self) -> Self::Output {
-        HNil
-    }
-}
-
-impl<H, Tail> ToMutRef for HCons<H, Tail>
-where
-    for<'a> H: 'a,
-    Tail: ToMutRef,
-{
-    type Output<'a> = HCons<&'a mut H, <Tail as ToMutRef>::Output>;
-
-    fn to_mut(&mut self) -> Self::Output {
-        HCons {
-            head: &mut self.head,
-            tail: self.tail.to_mut(),
-        }
     }
 }

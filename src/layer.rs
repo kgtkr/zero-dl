@@ -1,4 +1,4 @@
-use crate::hlist_extra::ConcatAndSplit;
+use crate::hlist_extra::{Concat, ConcatIsInverseSplit, ConcatToMutIsToMutConcat, Split};
 use frunk::labelled::Field;
 use frunk::traits::ToMut;
 use frunk::{field, HCons, HNil};
@@ -72,22 +72,21 @@ impl LabelledLayers for HNil {
 
 impl<Name, Type: Layer, Tail: LabelledLayers> LabelledLayers for HCons<Field<Name, Type>, Tail>
 where
-    Type::Placeholders: ConcatAndSplit<Tail::Placeholders>,
-    Type::Variables: ConcatAndSplit<Tail::Variables>,
+    Type::Placeholders: ConcatIsInverseSplit<Tail::Placeholders>,
+    Type::Variables: ConcatIsInverseSplit<Tail::Variables>,
 {
     type Outputs = HCons<Field<Name, Type::Output>, Tail::Outputs>;
     type Optimizers = HCons<Field<Name, Type::Optimizer>, Tail::Optimizers>;
-    type Placeholders = <Type::Placeholders as ConcatAndSplit<Tail::Placeholders>>::Out;
-    type Variables = <Type::Variables as ConcatAndSplit<Tail::Variables>>::Out;
+    type Placeholders = <Type::Placeholders as Concat<Tail::Placeholders>>::Output;
+    type Variables = <Type::Variables as Concat<Tail::Variables>>::Output;
 
     fn forward(
         &self,
         placeholders: Self::Placeholders,
         variables: Self::Variables,
     ) -> (Self::Outputs, Self::Optimizers) {
-        let (head_placeholders, tail_placeholders) =
-            ConcatAndSplit::<Tail::Placeholders>::split(placeholders);
-        let (head_variables, tail_variables) = ConcatAndSplit::<Tail::Variables>::split(variables);
+        let (head_placeholders, tail_placeholders) = placeholders.split();
+        let (head_variables, tail_variables) = variables.split();
         let (head_output, head_optimizer) =
             self.head.value.forward(head_placeholders, head_variables);
         let (tail_outputs, tail_optimizers) = self.tail.forward(tail_placeholders, tail_variables);
@@ -133,20 +132,10 @@ impl LabelledOptimizers for HNil {
 impl<Name, Type: Optimizer, Tail: LabelledOptimizers> LabelledOptimizers
     for HCons<Field<Name, Type>, Tail>
 where
-    Type::Variables: ConcatAndSplit<Tail::Variables>,
-    Type::Variables: for<'a> ToMut<'a>,
-    Tail::Variables: for<'a> ToMut<'a>,
-    for<'a> <Type::Variables as ConcatAndSplit<Tail::Variables>>::Out: ToMut<
-        'a,
-        Output = <<Type::Variables as ToMut<'a>>::Output as ConcatAndSplit<
-            <Tail::Variables as ToMut<'a>>::Output,
-        >>::Out,
-    >,
-    for<'a> <<Type as Optimizer>::Variables as ToMut<'a>>::Output:
-        ConcatAndSplit<<<Tail as LabelledOptimizers>::Variables as ToMut<'a>>::Output>,
+    Type::Variables: for<'a> ConcatToMutIsToMutConcat<'a, Tail::Variables>,
 {
     type Outputs = HCons<Field<Name, Type::Output>, Tail::Outputs>;
-    type Variables = <Type::Variables as ConcatAndSplit<Tail::Variables>>::Out;
+    type Variables = <Type::Variables as Concat<Tail::Variables>>::Output;
 
     fn optimize<'a>(
         self,
@@ -154,8 +143,7 @@ where
         variables: <Self::Variables as ToMut<'a>>::Output,
         learning_rate: f32,
     ) {
-        let (type_variables, tail_variables) =
-            ConcatAndSplit::<<Tail::Variables as ToMut<'a>>::Output>::split(variables);
+        let (type_variables, tail_variables) = variables.split();
 
         self.head
             .value
@@ -250,23 +238,22 @@ pub struct LayerAdapter<I, L> {
 
 impl<I: LabelledLayers, L: UnconnectedLayer<Inputs = I::Outputs>> Layer for LayerAdapter<I, L>
 where
-    I::Placeholders: ConcatAndSplit<L::Placeholders>,
-    I::Variables: ConcatAndSplit<L::Variables>,
+    I::Placeholders: ConcatIsInverseSplit<L::Placeholders>,
+    I::Variables: ConcatIsInverseSplit<L::Variables>,
     OptimizerAdapter<I::Optimizers, L::Optimizer>: Optimizer<Output = L::Output>,
 {
     type Output = L::Output;
     type Optimizer = OptimizerAdapter<I::Optimizers, L::Optimizer>;
-    type Placeholders = <I::Placeholders as ConcatAndSplit<L::Placeholders>>::Out;
-    type Variables = <I::Variables as ConcatAndSplit<L::Variables>>::Out;
+    type Placeholders = <I::Placeholders as Concat<L::Placeholders>>::Output;
+    type Variables = <I::Variables as Concat<L::Variables>>::Output;
 
     fn forward(
         &self,
         placeholders: Self::Placeholders,
         variables: Self::Variables,
     ) -> (Self::Output, Self::Optimizer) {
-        let (input_placeholders, layer_placeholders) =
-            ConcatAndSplit::<L::Placeholders>::split(placeholders);
-        let (input_variables, layer_variables) = ConcatAndSplit::<L::Variables>::split(variables);
+        let (input_placeholders, layer_placeholders) = placeholders.split();
+        let (input_variables, layer_variables) = variables.split();
         let (inputs, input_optimizers) = self
             .input_layers
             .forward(input_placeholders, input_variables);
@@ -292,10 +279,10 @@ pub struct OptimizerAdapter<I, O> {
 impl<I: LabelledOptimizers, O: UnconnectedOptimizer<Inputs = I::Outputs>> Optimizer
     for OptimizerAdapter<I, O>
 where
-    I::Variables: ConcatAndSplit<O::Variables>,
+    I::Variables: ConcatIsInverseSplit<O::Variables>,
 {
     type Output = O::Output;
-    type Variables = <I::Variables as ConcatAndSplit<O::Variables>>::Out;
+    type Variables = <I::Variables as Concat<O::Variables>>::Output;
 
     fn optimize(
         self,

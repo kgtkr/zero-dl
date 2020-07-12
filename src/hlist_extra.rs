@@ -1,6 +1,7 @@
 use frunk::hlist::{HCons, HList, HNil};
 use frunk::indices::{Here, There};
 use frunk::labelled::Field;
+use frunk::traits::ToMut;
 use std::ops::Add;
 
 #[macro_export]
@@ -52,18 +53,16 @@ macro_rules! Record {
     };
 }
 
-trait Concat<RHS> = Add<RHS>;
+pub trait Split<Lhs>: Sized {
+    type Rhs;
 
-pub trait Split<LHS>: Sized {
-    type RHS;
-
-    fn split(self) -> (LHS, Self::RHS);
+    fn split(self) -> (Lhs, Self::Rhs);
 }
 
 impl<T> Split<HNil> for T {
-    type RHS = T;
+    type Rhs = T;
 
-    fn split(self) -> (HNil, Self::RHS) {
+    fn split(self) -> (HNil, Self::Rhs) {
         (HNil, self)
     }
 }
@@ -72,9 +71,9 @@ impl<Head, LTail, RTail> Split<HCons<Head, LTail>> for HCons<Head, RTail>
 where
     RTail: Split<LTail>,
 {
-    type RHS = <RTail as Split<LTail>>::RHS;
+    type Rhs = <RTail as Split<LTail>>::Rhs;
 
-    fn split(self) -> (HCons<Head, LTail>, Self::RHS) {
+    fn split(self) -> (HCons<Head, LTail>, Self::Rhs) {
         let (l, r) = self.tail.split();
         (
             HCons {
@@ -86,53 +85,36 @@ where
     }
 }
 
-pub trait ConcatAndSplit<RHS>: Sized {
-    type Out;
+pub trait Concat<Rhs>: Sized {
+    type Output;
 
-    fn concat(self, rhs: RHS) -> Self::Out;
-    fn split(output: Self::Out) -> (Self, RHS);
+    fn concat(self, rhs: Rhs) -> Self::Output;
 }
 
-impl<RHS> ConcatAndSplit<RHS> for HNil
+impl<R> Concat<R> for R
 where
-    RHS: HList,
+    Self: Add<R>,
 {
-    type Out = RHS;
+    type Output = <Self as Add<R>>::Output;
 
-    fn concat(self, rhs: RHS) -> Self::Out {
-        rhs
-    }
-
-    fn split(output: Self::Out) -> (Self, RHS) {
-        (HNil, output)
+    fn concat(self, rhs: R) -> Self::Output {
+        self + rhs
     }
 }
 
-impl<H, T, RHS> ConcatAndSplit<RHS> for HCons<H, T>
-where
-    T: ConcatAndSplit<RHS>,
-    RHS: HList,
-{
-    type Out = HCons<H, <T as ConcatAndSplit<RHS>>::Out>;
+pub trait ConcatIsInverseSplit<R> = where
+    Self: Concat<R>,
+    <Self as Concat<R>>::Output: Split<Self, Rhs = R>;
 
-    fn concat(self, rhs: RHS) -> Self::Out {
-        HCons {
-            head: self.head,
-            tail: self.tail.concat(rhs),
-        }
-    }
-
-    fn split(output: Self::Out) -> (Self, RHS) {
-        let (a, b) = ConcatAndSplit::split(output.tail);
-        (
-            HCons {
-                head: output.head,
-                tail: a,
-            },
-            b,
-        )
-    }
-}
+pub trait ConcatToMutIsToMutConcat<'a, R> = where
+    Self: ConcatIsInverseSplit<R>,
+    Self: ToMut<'a>,
+    R: ToMut<'a>,
+    <Self as ToMut<'a>>::Output: ConcatIsInverseSplit<<R as ToMut<'a>>::Output>,
+    <Self as Concat<R>>::Output: ToMut<
+        'a,
+        Output = <<Self as ToMut<'a>>::Output as Concat<<R as ToMut<'a>>::Output>>::Output,
+    >;
 
 pub trait Has<TargetKey, Index> {
     type TargetValue;

@@ -2,48 +2,10 @@ use crate::hlist_extra::{Concat, ConcatIsInverseSplit, ConcatToMutIsToMutConcat,
 use frunk::labelled::Field;
 use frunk::traits::ToMut;
 use frunk::{field, HCons, HNil};
-use ndarray::prelude::*;
-
-// レイヤー間を流れる値
-pub trait LayerValue {
-    // 微分した時の型。変数を除いて基本的にSelfになる
-    type Grad;
-}
-
-impl LayerValue for f32 {
-    type Grad = Self;
-}
-
-impl<Ix> LayerValue for Array<f32, Ix> {
-    type Grad = Self;
-}
-
-impl<Ix> LayerValue for ArcArray<f32, Ix> {
-    type Grad = Self;
-}
-
-impl<'a, Ix> LayerValue for ArrayView<'a, f32, Ix> {
-    type Grad = Self;
-}
-
-// LayerValueのLabelled HList
-pub trait LabelledLayerValues {
-    type Grads;
-}
-
-impl LabelledLayerValues for HNil {
-    type Grads = HNil;
-}
-
-impl<Name, Type: LayerValue, Tail: LabelledLayerValues> LabelledLayerValues
-    for HCons<Field<Name, Type>, Tail>
-{
-    type Grads = HCons<Field<Name, Type::Grad>, Tail::Grads>;
-}
 
 // LayerのLabelled HList
 pub trait LabelledLayers {
-    type Outputs: LabelledLayerValues;
+    type Outputs;
     type Optimizers: LabelledOptimizers<Outputs = Self::Outputs, Variables = Self::Variables>;
     type Placeholders;
     type Variables: for<'a> ToMut<'a>;
@@ -105,12 +67,12 @@ where
 
 // OptimizerのLabelled HList
 pub trait LabelledOptimizers: Sized {
-    type Outputs: LabelledLayerValues;
+    type Outputs;
     type Variables: for<'a> ToMut<'a>;
 
     fn optimize<'a>(
         self,
-        douts: <Self::Outputs as LabelledLayerValues>::Grads,
+        douts: Self::Outputs,
         variables: <Self::Variables as ToMut<'a>>::Output,
         learning_rate: f32,
     );
@@ -122,7 +84,7 @@ impl LabelledOptimizers for HNil {
 
     fn optimize<'a>(
         self,
-        _: <Self::Outputs as LabelledLayerValues>::Grads,
+        douts: Self::Outputs,
         variables: <Self::Variables as ToMut<'a>>::Output,
         learning_rate: f32,
     ) {
@@ -139,7 +101,7 @@ where
 
     fn optimize<'a>(
         self,
-        douts: <Self::Outputs as LabelledLayerValues>::Grads,
+        douts: Self::Outputs,
         variables: <Self::Variables as ToMut<'a>>::Output,
         learning_rate: f32,
     ) {
@@ -154,19 +116,19 @@ where
 }
 
 pub trait Optimizer {
-    type Output: LayerValue;
+    type Output;
     type Variables: for<'a> ToMut<'a>;
 
     fn optimize<'a>(
         self,
-        dout: <Self::Output as LayerValue>::Grad,
+        douts: Self::Output,
         variables: <Self::Variables as ToMut<'a>>::Output,
         learning_rate: f32,
     );
 }
 
 pub trait Layer {
-    type Output: LayerValue;
+    type Output;
     type Optimizer: Optimizer<Output = Self::Output, Variables = Self::Variables>;
     type Placeholders;
     type Variables: for<'a> ToMut<'a>;
@@ -181,7 +143,7 @@ pub trait Layer {
 // 親レイヤーと未接続のレイヤー
 pub trait UnconnectedLayer: Sized {
     // 入力の名前と型のLabelled HList
-    type Inputs: LabelledLayerValues;
+    type Inputs;
 
     // このレイヤーで必要なプレースフォルダの名前と型のLabelled HList
     type Placeholders;
@@ -190,7 +152,7 @@ pub trait UnconnectedLayer: Sized {
     type Variables: for<'a> ToMut<'a>;
 
     // 出力の型
-    type Output: LayerValue;
+    type Output;
 
     type Optimizer: UnconnectedOptimizer<
         Inputs = Self::Inputs,
@@ -218,17 +180,17 @@ pub trait UnconnectedLayer: Sized {
 
 // 親レイヤーと未接続のOptimizer
 pub trait UnconnectedOptimizer {
-    type Inputs: LabelledLayerValues;
-    type Output: LayerValue;
+    type Inputs;
+    type Output;
     type Variables: for<'a> ToMut<'a>;
 
     fn optimize<'a>(
         self,
-        dout: <Self::Output as LayerValue>::Grad,
+        douts: Self::Output,
         variables: <Self::Variables as ToMut<'a>>::Output,
         // TODO: 本来はこれOptimizerアルゴリズムのパラメーターにするべき
         learning_rate: f32,
-    ) -> <Self::Inputs as LabelledLayerValues>::Grads;
+    ) -> Self::Inputs;
 }
 
 pub struct LayerAdapter<I, L> {
@@ -287,7 +249,7 @@ where
 
     fn optimize<'a>(
         self,
-        dout: <Self::Output as LayerValue>::Grad,
+        dout: Self::Output,
         variables: <Self::Variables as ToMut<'a>>::Output,
         learning_rate: f32,
     ) {

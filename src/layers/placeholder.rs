@@ -1,4 +1,4 @@
-use crate::layer::{Layer, Optimizer, UnconnectedLayer, UnconnectedOptimizer};
+use crate::layer::{UnconnectedLayer, UnconnectedOptimizer};
 use frunk::labelled::Field;
 use frunk::traits::ToMut;
 use frunk::{HCons, HNil};
@@ -16,9 +16,9 @@ impl<K, V> UnconnectedOptimizer for PlaceholderOptimizer<K, V> {
 
     fn optimize<'a>(
         self,
-        dout: Self::Output,
-        variables: <Self::Variables as ToMut<'a>>::Output,
-        learning_rate: f32,
+        _dout: Self::Output,
+        _variables: <Self::Variables as ToMut<'a>>::Output,
+        _learning_rate: f32,
     ) -> Self::Inputs {
         record! {}
     }
@@ -50,7 +50,7 @@ impl<K, V> UnconnectedLayer for Placeholder<K, V> {
     fn forward(
         &self,
         placeholders: Self::Placeholders,
-        variables: Self::Variables,
+        _variables: Self::Variables,
         inputs: Self::Inputs,
     ) -> (Self::Output, Self::Optimizer) {
         record_dest!({} = inputs);

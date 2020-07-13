@@ -1,9 +1,9 @@
 use crate::arr_functions;
-use crate::layer::{Layer, Optimizer, UnconnectedLayer, UnconnectedOptimizer};
+use crate::layer::{UnconnectedLayer, UnconnectedOptimizer};
 use frunk::traits::ToMut;
-use frunk::{HCons, HNil};
+use frunk::{HNil};
 use ndarray::prelude::*;
-use ndarray::Zip;
+
 use ndarray_stats::QuantileExt;
 
 pub struct PoolingOptimizer {
@@ -25,8 +25,8 @@ impl UnconnectedOptimizer for PoolingOptimizer {
     fn optimize<'a>(
         self,
         dout: Self::Output,
-        variables: <Self::Variables as ToMut<'a>>::Output,
-        learning_rate: f32,
+        _variables: <Self::Variables as ToMut<'a>>::Output,
+        _learning_rate: f32,
     ) -> Self::Inputs {
         let dout = dout.permuted_axes([0, 2, 3, 1]);
 
@@ -103,8 +103,8 @@ impl UnconnectedLayer for Pooling {
 
     fn forward(
         &self,
-        placeholders: Self::Placeholders,
-        variables: Self::Variables,
+        _placeholders: Self::Placeholders,
+        _variables: Self::Variables,
         inputs: Self::Inputs,
     ) -> (Self::Output, Self::Optimizer) {
         record_dest!({

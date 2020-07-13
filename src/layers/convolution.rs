@@ -1,17 +1,17 @@
 use crate::arr_functions;
 use crate::layer::UnconnectedLayer;
 use crate::layer::UnconnectedOptimizer;
-use crate::layer::{Layer, Optimizer};
-use frunk::labelled::{ByNameFieldPlucker, Field};
+
+
 use frunk::traits::ToMut;
 use frunk::HNil;
-use frunk::{field, hlist, Hlist};
+
 use ndarray::prelude::*;
-use ndarray::Zip;
-use ndarray_rand::rand_distr::Normal;
-use ndarray_rand::RandomExt;
-use std::cell::RefCell;
-use std::sync::Arc;
+
+
+
+
+
 
 pub struct ConvolutionOptimizer {
     pub weight: Array4<f32>,
@@ -35,8 +35,8 @@ impl UnconnectedOptimizer for ConvolutionOptimizer {
     fn optimize<'a>(
         self,
         dout: Self::Output,
-        variables: <Self::Variables as ToMut<'a>>::Output,
-        learning_rate: f32,
+        _variables: <Self::Variables as ToMut<'a>>::Output,
+        _learning_rate: f32,
     ) -> Self::Inputs {
         let (FN, C, FH, FW) = self.weight.dim();
         let dout_len = dout.len();
@@ -87,8 +87,8 @@ impl UnconnectedLayer for Convolution {
 
     fn forward(
         &self,
-        placeholders: Self::Placeholders,
-        variables: Self::Variables,
+        _placeholders: Self::Placeholders,
+        _variables: Self::Variables,
         inputs: Self::Inputs,
     ) -> (Self::Output, Self::Optimizer) {
         record_dest!({
@@ -97,7 +97,7 @@ impl UnconnectedLayer for Convolution {
             bias,
         } = inputs);
 
-        let (FN, C, FH, FW) = weight.dim();
+        let (FN, _C, FH, FW) = weight.dim();
         let (N, C, H, W) = x.dim();
         let out_h = 1 + (H + 2 * self.pad - FH) / self.stride;
         let out_w = 1 + (W + 2 * self.pad - FW) / self.stride;

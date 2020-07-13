@@ -28,7 +28,7 @@ impl LabelledLayers for HNil {
     fn forward(
         &self,
         HNil: Self::Placeholders,
-        variables: Self::Variables,
+        _variables: Self::Variables,
     ) -> (Self::Outputs, Self::Optimizers) {
         (HNil, HNil)
     }
@@ -96,9 +96,9 @@ impl LabelledOptimizers for HNil {
 
     fn optimize<'a>(
         self,
-        douts: Self::Outputs,
-        variables: <Self::Variables as ToMut<'a>>::Output,
-        learning_rate: f32,
+        _douts: Self::Outputs,
+        _variables: <Self::Variables as ToMut<'a>>::Output,
+        _learning_rate: f32,
     ) {
     }
 }

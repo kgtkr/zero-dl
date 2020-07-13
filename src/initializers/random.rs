@@ -1,14 +1,14 @@
 use crate::initializer::Initializer;
-use crate::layer::{Layer, Optimizer, UnconnectedLayer, UnconnectedOptimizer};
-use frunk::labelled::Field;
-use frunk::traits::ToMut;
-use frunk::{HCons, HNil};
+
+
+
+
 use ndarray::Array;
-use ndarray::Zip;
+
 use ndarray::{Dimension, IntoDimension};
 use ndarray_rand::rand_distr::Normal;
 use ndarray_rand::RandomExt;
-use std::marker::PhantomData;
+
 
 pub struct Random<D> {
     dim: D,

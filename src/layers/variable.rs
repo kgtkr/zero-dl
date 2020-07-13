@@ -1,14 +1,14 @@
 use crate::initializer::Initializer;
-use crate::layer::{Layer, Optimizer, UnconnectedLayer, UnconnectedOptimizer};
+use crate::layer::{UnconnectedLayer, UnconnectedOptimizer};
 use frunk::field;
 use frunk::labelled::Field;
 use frunk::traits::ToMut;
 use frunk::{HCons, HNil};
 use ndarray::Array;
 use ndarray::Zip;
-use ndarray::{Dimension, IntoDimension};
-use ndarray_rand::rand_distr::Normal;
-use ndarray_rand::RandomExt;
+use ndarray::{Dimension};
+
+
 use std::marker::PhantomData;
 
 pub fn optimize<D: Dimension>(arr: &mut Array<f32, D>, grad: Array<f32, D>, learning_rate: f32) {
@@ -68,7 +68,7 @@ impl<K: 'static, D: Dimension + 'static, I: Initializer<Output = Array<f32, D>>>
 
     fn forward(
         &self,
-        placeholders: Self::Placeholders,
+        _placeholders: Self::Placeholders,
         variables: Self::Variables,
         inputs: Self::Inputs,
     ) -> (Self::Output, Self::Optimizer) {

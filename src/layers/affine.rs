@@ -1,14 +1,14 @@
 use crate::layer::{UnconnectedLayer, UnconnectedOptimizer};
-use frunk::labelled::{ByNameFieldPlucker, Field};
+
 use frunk::traits::ToMut;
 use frunk::{field, hlist, HNil, Hlist};
-use frunk_labelled_proc_macro::label;
+
 use ndarray::prelude::*;
-use ndarray::Zip;
-use ndarray_rand::rand_distr::Normal;
-use ndarray_rand::RandomExt;
-use std::cell::RefCell;
-use std::sync::Arc;
+
+
+
+
+
 
 pub struct AffineOptimizer {
     pub weight: Array2<f32>,
@@ -28,8 +28,8 @@ impl UnconnectedOptimizer for AffineOptimizer {
     fn optimize<'a>(
         self,
         dout: Self::Output,
-        variables: <Self::Variables as ToMut<'a>>::Output,
-        learning_rate: f32,
+        _variables: <Self::Variables as ToMut<'a>>::Output,
+        _learning_rate: f32,
     ) -> Self::Inputs {
         let dx = dout.dot(&self.weight.t());
 
@@ -69,7 +69,7 @@ impl UnconnectedLayer for Affine {
     fn forward(
         &self,
         HNil: Self::Placeholders,
-        variables: Self::Variables,
+        _variables: Self::Variables,
         inputs: Self::Inputs,
     ) -> (Self::Output, Self::Optimizer) {
         record_dest!({

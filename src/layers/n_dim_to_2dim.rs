@@ -1,6 +1,6 @@
-use crate::layer::{Layer, Optimizer, UnconnectedLayer, UnconnectedOptimizer};
+use crate::layer::{UnconnectedLayer, UnconnectedOptimizer};
 use frunk::traits::ToMut;
-use frunk::{HCons, HNil};
+use frunk::{HNil};
 use ndarray::prelude::*;
 use std::marker::PhantomData;
 
@@ -18,8 +18,8 @@ impl<D: Dimension> UnconnectedOptimizer for NDimTo2DimOptimizer<D> {
     fn optimize<'a>(
         self,
         dout: Self::Output,
-        variables: <Self::Variables as ToMut<'a>>::Output,
-        learning_rate: f32,
+        _variables: <Self::Variables as ToMut<'a>>::Output,
+        _learning_rate: f32,
     ) -> Self::Inputs {
         let dx = dout.to_shared().reshape(self.original_x_shape).to_owned();
 
@@ -55,8 +55,8 @@ impl<D: Dimension> UnconnectedLayer for NDimTo2Dim<D> {
 
     fn forward(
         &self,
-        placeholders: Self::Placeholders,
-        variables: Self::Variables,
+        _placeholders: Self::Placeholders,
+        _variables: Self::Variables,
         inputs: Self::Inputs,
     ) -> (Self::Output, Self::Optimizer) {
         record_dest!({

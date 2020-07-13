@@ -2,15 +2,15 @@
 extern crate zero_dl;
 
 use flate2::read::GzDecoder;
-use frunk::labelled::{Field, Transmogrifier};
-use frunk::{field, hlist, HCons, HNil};
+
+
 use frunk_labelled_proc_macro::label;
 use ndarray::prelude::*;
 use ndarray::Zip;
 use rand::prelude::*;
 use std::fs::File;
-use zero_dl::initializer::Initializer;
-use zero_dl::initializers;
+
+
 use zero_dl::initializers::{random::Random, zero::Zero};
 use zero_dl::layer::{LabelledLayers, LabelledOptimizers, Layer, Optimizer, UnconnectedLayer};
 use zero_dl::layers::{

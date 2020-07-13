@@ -1,5 +1,5 @@
 use crate::arr_functions;
-use crate::layer::{Layer, Optimizer, UnconnectedLayer, UnconnectedOptimizer};
+use crate::layer::{UnconnectedLayer, UnconnectedOptimizer};
 use frunk::traits::ToMut;
 use frunk::HNil;
 use ndarray::prelude::*;
@@ -19,9 +19,9 @@ impl UnconnectedOptimizer for SoftmaxCrossEntropyOptimizer {
 
     fn optimize<'a>(
         self,
-        dout: f32,
-        variables: <Self::Variables as ToMut<'a>>::Output,
-        learning_rate: f32,
+        _dout: f32,
+        _variables: <Self::Variables as ToMut<'a>>::Output,
+        _learning_rate: f32,
     ) -> Self::Inputs {
         let batch_size = self.t.len_of(Axis(0));
         let dx = (&self.y - &self.t) / batch_size as f32;
@@ -60,8 +60,8 @@ impl UnconnectedLayer for SoftmaxCrossEntropy {
 
     fn forward(
         &self,
-        placeholders: Self::Placeholders,
-        variables: Self::Variables,
+        _placeholders: Self::Placeholders,
+        _variables: Self::Variables,
         inputs: Self::Inputs,
     ) -> (Self::Output, Self::Optimizer) {
         record_dest!({

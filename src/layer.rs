@@ -15,6 +15,8 @@ pub trait LabelledLayers {
         placeholders: Self::Placeholders,
         variables: Self::Variables,
     ) -> (Self::Outputs, Self::Optimizers);
+
+    fn initial_variables(&self) -> Self::Variables;
 }
 
 impl LabelledLayers for HNil {
@@ -29,6 +31,10 @@ impl LabelledLayers for HNil {
         variables: Self::Variables,
     ) -> (Self::Outputs, Self::Optimizers) {
         (HNil, HNil)
+    }
+
+    fn initial_variables(&self) -> Self::Variables {
+        HNil
     }
 }
 
@@ -62,6 +68,12 @@ where
                 tail: tail_optimizers,
             },
         )
+    }
+
+    fn initial_variables(&self) -> Self::Variables {
+        let head_variables = self.head.value.initial_variables();
+        let tail_variables = self.tail.initial_variables();
+        head_variables.concat(tail_variables)
     }
 }
 
@@ -138,6 +150,8 @@ pub trait Layer {
         placeholders: Self::Placeholders,
         variables: Self::Variables,
     ) -> (Self::Output, Self::Optimizer);
+
+    fn initial_variables(&self) -> Self::Variables;
 }
 
 // 親レイヤーと未接続のレイヤー
@@ -176,6 +190,8 @@ pub trait UnconnectedLayer: Sized {
         variables: Self::Variables,
         inputs: Self::Inputs,
     ) -> (Self::Output, Self::Optimizer);
+
+    fn initial_variables(&self) -> Self::Variables;
 }
 
 // 親レイヤーと未接続のOptimizer
@@ -232,6 +248,12 @@ where
             },
         )
     }
+
+    fn initial_variables(&self) -> Self::Variables {
+        let input_variables = self.input_layers.initial_variables();
+        let layer_variables = self.layer.initial_variables();
+        input_variables.concat(layer_variables)
+    }
 }
 
 pub struct OptimizerAdapter<I, O> {
@@ -275,5 +297,9 @@ impl<T: Layer> Layer for &T {
         variables: Self::Variables,
     ) -> (Self::Output, Self::Optimizer) {
         (*self).forward(placeholders, variables)
+    }
+
+    fn initial_variables(&self) -> Self::Variables {
+        (*self).initial_variables()
     }
 }

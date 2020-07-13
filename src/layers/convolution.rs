@@ -126,4 +126,8 @@ impl UnconnectedLayer for Convolution {
             },
         )
     }
+
+    fn initial_variables(&self) -> Self::Variables {
+        HNil
+    }
 }

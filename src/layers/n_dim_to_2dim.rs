@@ -74,4 +74,8 @@ impl<D: Dimension> UnconnectedLayer for NDimTo2Dim<D> {
 
         (out, NDimTo2DimOptimizer { original_x_shape })
     }
+
+    fn initial_variables(&self) -> Self::Variables {
+        HNil
+    }
 }

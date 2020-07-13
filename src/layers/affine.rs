@@ -81,4 +81,8 @@ impl UnconnectedLayer for Affine {
 
         (y, AffineOptimizer { x, weight, bias })
     }
+
+    fn initial_variables(&self) -> Self::Variables {
+        HNil
+    }
 }

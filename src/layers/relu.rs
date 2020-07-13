@@ -71,4 +71,8 @@ impl<D: Dimension> UnconnectedLayer for Relu<D> {
         let y = x.mapv(|x| x.max(0.));
         (y, ReluOptimizer { x })
     }
+
+    fn initial_variables(&self) -> Self::Variables {
+        HNil
+    }
 }

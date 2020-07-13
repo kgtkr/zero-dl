@@ -62,4 +62,8 @@ impl<K, V> UnconnectedLayer for Placeholder<K, V> {
             },
         )
     }
+
+    fn initial_variables(&self) -> Self::Variables {
+        HNil
+    }
 }

@@ -1,4 +1,6 @@
+use crate::initializer::Initializer;
 use crate::layer::{Layer, Optimizer, UnconnectedLayer, UnconnectedOptimizer};
+use frunk::field;
 use frunk::labelled::Field;
 use frunk::traits::ToMut;
 use frunk::{HCons, HNil};
@@ -8,15 +10,6 @@ use ndarray::{Dimension, IntoDimension};
 use ndarray_rand::rand_distr::Normal;
 use ndarray_rand::RandomExt;
 use std::marker::PhantomData;
-
-pub fn initialize_zero<D: IntoDimension>(dim: D) -> Array<f32, D::Dim> {
-    Array::zeros(dim.into_dimension())
-}
-
-pub fn initialize_random<D: IntoDimension>(dim: D) -> Array<f32, D::Dim> {
-    let weight_init_std = 0.01;
-    Array::random(dim.into_dimension(), Normal::new(0., 1.).unwrap()) * weight_init_std
-}
 
 pub fn optimize<D: Dimension>(arr: &mut Array<f32, D>, grad: Array<f32, D>, learning_rate: f32) {
     Zip::from(arr)
@@ -47,22 +40,26 @@ impl<K: 'static, D: Dimension + 'static> UnconnectedOptimizer for VariableOptimi
 }
 
 #[derive(Debug, Clone)]
-pub struct Variable<K, D> {
+pub struct Variable<K, D, I> {
     pub phantom: PhantomData<(K, D)>,
+    pub initializer: I,
 }
 
-impl<K, D> Variable<K, D>
+impl<K, D, I> Variable<K, D, I>
 where
     Self: UnconnectedLayer,
 {
-    pub fn new() -> Self {
+    pub fn new(initializer: I) -> Self {
         Variable {
             phantom: PhantomData,
+            initializer,
         }
     }
 }
 
-impl<K: 'static, D: Dimension + 'static> UnconnectedLayer for Variable<K, D> {
+impl<K: 'static, D: Dimension + 'static, I: Initializer<Output = Array<f32, D>>> UnconnectedLayer
+    for Variable<K, D, I>
+{
     type Inputs = Record! {};
     type Output = Array<f32, D>;
     type Optimizer = VariableOptimizer<K, D>;
@@ -83,5 +80,12 @@ impl<K: 'static, D: Dimension + 'static> UnconnectedLayer for Variable<K, D> {
                 phantom: PhantomData,
             },
         )
+    }
+
+    fn initial_variables(&self) -> Self::Variables {
+        HCons {
+            head: field![K, self.initializer.initial_value()],
+            tail: HNil,
+        }
     }
 }

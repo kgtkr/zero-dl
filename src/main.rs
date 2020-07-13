@@ -9,6 +9,9 @@ use ndarray::prelude::*;
 use ndarray::Zip;
 use rand::prelude::*;
 use std::fs::File;
+use zero_dl::initializer::Initializer;
+use zero_dl::initializers;
+use zero_dl::initializers::{random::Random, zero::Zero};
 use zero_dl::layer::{LabelledLayers, LabelledOptimizers, Layer, Optimizer, UnconnectedLayer};
 use zero_dl::layers::{
     initialize_random, initialize_zero, Affine, Convolution, NDimTo2Dim, Placeholder, Pooling,
@@ -58,17 +61,14 @@ fn main() {
     let x = Placeholder::<label!(x), Array4<f32>>::new().join(record! {});
     let t = Placeholder::<label!(t), Array2<f32>>::new().join(record! {});
 
-    let mut variables = record! {
-        weight1: initialize_random((filter_num, input_dim.0, filter_size, filter_size)),
-        bias1: initialize_zero((filter_num,)),
-        weight2: initialize_random((pool_output_size, hidden_size)),
-        bias2: initialize_zero((hidden_size,)),
-        weight3: initialize_random((hidden_size, output_size)),
-        bias3: initialize_zero((output_size,))
-    };
-
-    let weight1 = Variable::<label!(weight1), Ix4>::new().join(record! {});
-    let bias1 = Variable::<label!(bias1), Ix1>::new().join(record! {});
+    let weight1 = Variable::<label!(weight1), Ix4, _>::new(Random::new((
+        filter_num,
+        input_dim.0,
+        filter_size,
+        filter_size,
+    )))
+    .join(record! {});
+    let bias1 = Variable::<label!(bias1), Ix1, _>::new(Zero::new((filter_num,))).join(record! {});
     let conv1 = Convolution::new(filter_stride, filter_pad).join(record! {
         x: &x,
         weight: &weight1,
@@ -85,8 +85,10 @@ fn main() {
         x: &pool1
     });
 
-    let weight2 = Variable::<label!(weight2), Ix2>::new().join(record! {});
-    let bias2 = Variable::<label!(bias2), Ix1>::new().join(record! {});
+    let weight2 =
+        Variable::<label!(weight2), Ix2, _>::new(Random::new((pool_output_size, hidden_size)))
+            .join(record! {});
+    let bias2 = Variable::<label!(bias2), Ix1, _>::new(Zero::new((hidden_size,))).join(record! {});
     let affine1 = Affine::new().join(record! {
         x: &nto2,
         weight: &weight2,
@@ -96,8 +98,9 @@ fn main() {
         x: &affine1
     });
 
-    let weight3 = Variable::<label!(weight3), Ix2>::new().join(record! {});
-    let bias3 = Variable::<label!(bias3), Ix1>::new().join(record! {});
+    let weight3 = Variable::<label!(weight3), Ix2, _>::new(Random::new((hidden_size, output_size)))
+        .join(record! {});
+    let bias3 = Variable::<label!(bias3), Ix1, _>::new(Zero::new((output_size,))).join(record! {});
     let affine2 = Affine::new().join(record! {
         x: &relu2,
         weight: &weight3,
@@ -108,6 +111,8 @@ fn main() {
         x: &affine2,
         t: &t
     });
+
+    let mut variables = softmax_with_loss.initial_variables();
 
     let iters_num = 100;
     let batch_size = 100;

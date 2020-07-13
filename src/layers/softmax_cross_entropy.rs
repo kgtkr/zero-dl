@@ -74,4 +74,8 @@ impl UnconnectedLayer for SoftmaxCrossEntropy {
 
         (loss, SoftmaxCrossEntropyOptimizer { t, y })
     }
+
+    fn initial_variables(&self) -> Self::Variables {
+        HNil
+    }
 }

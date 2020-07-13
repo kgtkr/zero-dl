@@ -143,4 +143,8 @@ impl UnconnectedLayer for Pooling {
             },
         )
     }
+
+    fn initial_variables(&self) -> Self::Variables {
+        HNil
+    }
 }

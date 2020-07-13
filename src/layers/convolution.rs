@@ -2,16 +2,10 @@ use crate::arr_functions;
 use crate::layer::UnconnectedLayer;
 use crate::layer::UnconnectedOptimizer;
 
-
 use frunk::traits::ToMut;
 use frunk::HNil;
 
 use ndarray::prelude::*;
-
-
-
-
-
 
 pub struct ConvolutionOptimizer {
     pub weight: Array4<f32>,
@@ -32,12 +26,7 @@ impl UnconnectedOptimizer for ConvolutionOptimizer {
     type Output = Array4<f32>;
     type Variables = HNil;
 
-    fn optimize<'a>(
-        self,
-        dout: Self::Output,
-        _variables: <Self::Variables as ToMut<'a>>::Output,
-        _learning_rate: f32,
-    ) -> Self::Inputs {
+    fn optimize(self, dout: Self::Output) -> (Self::Inputs, Self::Variables) {
         let (FN, C, FH, FW) = self.weight.dim();
         let dout_len = dout.len();
         let dout = dout
@@ -52,11 +41,14 @@ impl UnconnectedOptimizer for ConvolutionOptimizer {
         let dcol = dout.dot(&self.col_W.t());
         let dx = arr_functions::col2im(dcol.view(), self.x.dim(), FH, FW, self.stride, self.pad);
 
-        record! {
-            x: dx,
-            weight: dW,
-            bias: db
-        }
+        (
+            record! {
+                x: dx,
+                weight: dW,
+                bias: db
+            },
+            HNil,
+        )
     }
 }
 

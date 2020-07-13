@@ -4,38 +4,33 @@ use frunk::field;
 use frunk::labelled::Field;
 use frunk::traits::ToMut;
 use frunk::{HCons, HNil};
-use ndarray::Array;
-use ndarray::Zip;
-use ndarray::{Dimension};
-
 
 use std::marker::PhantomData;
 
-pub fn optimize<D: Dimension>(arr: &mut Array<f32, D>, grad: Array<f32, D>, learning_rate: f32) {
+/* pub fn optimize<D: Dimension>(arr: &mut Array<f32, D>, grad: Array<f32, D>, learning_rate: f32) {
     Zip::from(arr)
         .and(&grad)
         .apply(|x, y| *x -= learning_rate * y)
-}
+} */
 
 #[derive(Debug, Clone)]
 pub struct VariableOptimizer<K, D> {
     pub phantom: PhantomData<(K, D)>,
 }
 
-impl<K: 'static, D: Dimension + 'static> UnconnectedOptimizer for VariableOptimizer<K, D> {
+impl<K: 'static, V: 'static> UnconnectedOptimizer for VariableOptimizer<K, V> {
     type Inputs = Record! {};
-    type Output = Array<f32, D>;
-    type Variables = HCons<Field<K, Array<f32, D>>, HNil>;
+    type Output = V;
+    type Variables = HCons<Field<K, V>, HNil>;
 
-    fn optimize<'a>(
-        self,
-        dout: Self::Output,
-        variables: <Self::Variables as ToMut<'a>>::Output,
-        learning_rate: f32,
-    ) -> Self::Inputs {
-        optimize(&mut variables.head.value, dout, learning_rate);
-
-        record! {}
+    fn optimize(self, dout: Self::Output) -> (Self::Inputs, Self::Variables) {
+        (
+            record! {},
+            HCons {
+                head: field![K, dout],
+                tail: HNil,
+            },
+        )
     }
 }
 
@@ -57,14 +52,12 @@ where
     }
 }
 
-impl<K: 'static, D: Dimension + 'static, I: Initializer<Output = Array<f32, D>>> UnconnectedLayer
-    for Variable<K, D, I>
-{
+impl<K: 'static, V: 'static, I: Initializer<Output = V>> UnconnectedLayer for Variable<K, V, I> {
     type Inputs = Record! {};
-    type Output = Array<f32, D>;
-    type Optimizer = VariableOptimizer<K, D>;
+    type Output = V;
+    type Optimizer = VariableOptimizer<K, V>;
     type Placeholders = HNil;
-    type Variables = HCons<Field<K, Array<f32, D>>, HNil>;
+    type Variables = HCons<Field<K, V>, HNil>;
 
     fn forward(
         &self,

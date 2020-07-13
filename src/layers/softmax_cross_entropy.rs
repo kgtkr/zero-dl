@@ -17,12 +17,7 @@ impl UnconnectedOptimizer for SoftmaxCrossEntropyOptimizer {
     type Output = f32;
     type Variables = HNil;
 
-    fn optimize<'a>(
-        self,
-        _dout: f32,
-        _variables: <Self::Variables as ToMut<'a>>::Output,
-        _learning_rate: f32,
-    ) -> Self::Inputs {
+    fn optimize(self, _dout: f32) -> (Self::Inputs, Self::Variables) {
         let batch_size = self.t.len_of(Axis(0));
         let dx = (&self.y - &self.t) / batch_size as f32;
 
@@ -30,10 +25,13 @@ impl UnconnectedOptimizer for SoftmaxCrossEntropyOptimizer {
          * TODO: doutが1の時しか正常に動かない
          * またdtは正常な値でない
          */
-        record! {
-            x: dx,
-            t: Array2::zeros((0,0))
-        }
+        (
+            record! {
+                x: dx,
+                t: Array2::zeros((0,0))
+            },
+            HNil,
+        )
     }
 }
 

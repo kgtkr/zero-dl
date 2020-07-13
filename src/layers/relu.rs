@@ -1,6 +1,6 @@
 use crate::layer::{UnconnectedLayer, UnconnectedOptimizer};
 use frunk::traits::ToMut;
-use frunk::{HNil};
+use frunk::HNil;
 use ndarray::prelude::*;
 use ndarray::Zip;
 use std::marker::PhantomData;
@@ -16,21 +16,19 @@ impl<D: Dimension> UnconnectedOptimizer for ReluOptimizer<D> {
     type Output = Array<f32, D>;
     type Variables = HNil;
 
-    fn optimize<'a>(
-        self,
-        mut dout: Self::Output,
-        _variables: <Self::Variables as ToMut<'a>>::Output,
-        _learning_rate: f32,
-    ) -> Self::Inputs {
+    fn optimize(self, mut dout: Self::Output) -> (Self::Inputs, Self::Variables) {
         Zip::from(&mut dout).and(&self.x).apply(|dout_x, &x| {
             if x <= 0. {
                 *dout_x = 0.;
             }
         });
 
-        record! {
-            x: dout
-        }
+        (
+            record! {
+                x: dout
+            },
+            HNil,
+        )
     }
 }
 

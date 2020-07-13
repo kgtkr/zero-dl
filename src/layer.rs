@@ -8,7 +8,7 @@ pub trait LabelledLayers {
     type Outputs;
     type Optimizers: LabelledOptimizers<Outputs = Self::Outputs, Variables = Self::Variables>;
     type Placeholders;
-    type Variables: for<'a> ToMut<'a>;
+    type Variables;
 
     fn forward(
         &self,
@@ -41,7 +41,7 @@ impl LabelledLayers for HNil {
 impl<Name, Type: Layer, Tail: LabelledLayers> LabelledLayers for HCons<Field<Name, Type>, Tail>
 where
     Type::Placeholders: ConcatIsInverseSplit<Tail::Placeholders>,
-    Type::Variables: for<'a> ConcatToMutIsToMutConcat<'a, Tail::Variables>,
+    Type::Variables: ConcatIsInverseSplit<Tail::Variables>,
 {
     type Outputs = HCons<Field<Name, Type::Output>, Tail::Outputs>;
     type Optimizers = HCons<Field<Name, Type::Optimizer>, Tail::Optimizers>;
@@ -80,70 +80,48 @@ where
 // OptimizerのLabelled HList
 pub trait LabelledOptimizers: Sized {
     type Outputs;
-    type Variables: for<'a> ToMut<'a>;
+    type Variables;
 
-    fn optimize<'a>(
-        self,
-        douts: Self::Outputs,
-        variables: <Self::Variables as ToMut<'a>>::Output,
-        learning_rate: f32,
-    );
+    fn optimize(self, douts: Self::Outputs) -> Self::Variables;
 }
 
 impl LabelledOptimizers for HNil {
     type Outputs = HNil;
     type Variables = HNil;
 
-    fn optimize<'a>(
-        self,
-        _douts: Self::Outputs,
-        _variables: <Self::Variables as ToMut<'a>>::Output,
-        _learning_rate: f32,
-    ) {
+    fn optimize(self, _douts: Self::Outputs) -> Self::Variables {
+        HNil
     }
 }
 
 impl<Name, Type: Optimizer, Tail: LabelledOptimizers> LabelledOptimizers
     for HCons<Field<Name, Type>, Tail>
 where
-    Type::Variables: for<'a> ConcatToMutIsToMutConcat<'a, Tail::Variables>,
+    Type::Variables: ConcatIsInverseSplit<Tail::Variables>,
 {
     type Outputs = HCons<Field<Name, Type::Output>, Tail::Outputs>;
     type Variables = <Type::Variables as Concat<Tail::Variables>>::Output;
 
-    fn optimize<'a>(
-        self,
-        douts: Self::Outputs,
-        variables: <Self::Variables as ToMut<'a>>::Output,
-        learning_rate: f32,
-    ) {
-        let (type_variables, tail_variables) = variables.split();
+    fn optimize(self, douts: Self::Outputs) -> Self::Variables {
+        let d1 = self.head.value.optimize(douts.head.value);
+        let d2 = self.tail.optimize(douts.tail);
 
-        self.head
-            .value
-            .optimize(douts.head.value, type_variables, learning_rate);
-        self.tail
-            .optimize(douts.tail, tail_variables, learning_rate);
+        d1.concat(d2)
     }
 }
 
 pub trait Optimizer {
     type Output;
-    type Variables: for<'a> ToMut<'a>;
+    type Variables;
 
-    fn optimize<'a>(
-        self,
-        douts: Self::Output,
-        variables: <Self::Variables as ToMut<'a>>::Output,
-        learning_rate: f32,
-    );
+    fn optimize(self, douts: Self::Output) -> Self::Variables;
 }
 
 pub trait Layer {
     type Output;
     type Optimizer: Optimizer<Output = Self::Output, Variables = Self::Variables>;
     type Placeholders;
-    type Variables: for<'a> ToMut<'a>;
+    type Variables;
 
     fn forward(
         &self,
@@ -163,7 +141,7 @@ pub trait UnconnectedLayer: Sized {
     type Placeholders;
 
     // このレイヤーで必要な変数の名前と型のLabelled HList
-    type Variables: for<'a> ToMut<'a>;
+    type Variables;
 
     // 出力の型
     type Output;
@@ -198,15 +176,9 @@ pub trait UnconnectedLayer: Sized {
 pub trait UnconnectedOptimizer {
     type Inputs;
     type Output;
-    type Variables: for<'a> ToMut<'a>;
+    type Variables;
 
-    fn optimize<'a>(
-        self,
-        douts: Self::Output,
-        variables: <Self::Variables as ToMut<'a>>::Output,
-        // TODO: 本来はこれOptimizerアルゴリズムのパラメーターにするべき
-        learning_rate: f32,
-    ) -> Self::Inputs;
+    fn optimize(self, douts: Self::Output) -> (Self::Inputs, Self::Variables);
 }
 
 pub struct LayerAdapter<I, L> {
@@ -217,7 +189,7 @@ pub struct LayerAdapter<I, L> {
 impl<I: LabelledLayers, L: UnconnectedLayer<Inputs = I::Outputs>> Layer for LayerAdapter<I, L>
 where
     I::Placeholders: ConcatIsInverseSplit<L::Placeholders>,
-    I::Variables: for<'a> ConcatToMutIsToMutConcat<'a, L::Variables>,
+    I::Variables: ConcatIsInverseSplit<L::Variables>,
     OptimizerAdapter<I::Optimizers, L::Optimizer>:
         Optimizer<Output = L::Output, Variables = <I::Variables as Concat<L::Variables>>::Output>,
 {
@@ -264,24 +236,16 @@ pub struct OptimizerAdapter<I, O> {
 impl<I: LabelledOptimizers, O: UnconnectedOptimizer<Inputs = I::Outputs>> Optimizer
     for OptimizerAdapter<I, O>
 where
-    I::Variables: for<'a> ConcatToMutIsToMutConcat<'a, O::Variables>,
+    I::Variables: ConcatIsInverseSplit<O::Variables>,
 {
     type Output = O::Output;
     type Variables = <I::Variables as Concat<O::Variables>>::Output;
 
-    fn optimize<'a>(
-        self,
-        dout: Self::Output,
-        variables: <Self::Variables as ToMut<'a>>::Output,
-        learning_rate: f32,
-    ) {
-        let (head_variables, input_variables) = variables.split();
+    fn optimize(self, dout: Self::Output) -> Self::Variables {
+        let (grads, d1) = self.optimizer.optimize(dout);
+        let d2 = self.input_optimizers.optimize(grads);
 
-        let grads = self
-            .optimizer
-            .optimize(dout, input_variables, learning_rate);
-        self.input_optimizers
-            .optimize(grads, head_variables, learning_rate);
+        d2.concat(d1)
     }
 }
 

@@ -3,13 +3,11 @@ extern crate zero_dl;
 
 use flate2::read::GzDecoder;
 
-
 use frunk_labelled_proc_macro::label;
 use ndarray::prelude::*;
 use ndarray::Zip;
 use rand::prelude::*;
 use std::fs::File;
-
 
 use zero_dl::initializers::{random::Random, zero::Zero};
 use zero_dl::layer::{LabelledLayers, LabelledOptimizers, Layer, Optimizer, UnconnectedLayer};
@@ -60,14 +58,14 @@ fn main() {
     let x = Placeholder::<label!(x), Array4<f32>>::new().join(record! {});
     let t = Placeholder::<label!(t), Array2<f32>>::new().join(record! {});
 
-    let weight1 = Variable::<label!(weight1), Ix4, _>::new(Random::new((
+    let weight1 = Variable::<label!(weight1), _, _>::new(Random::new((
         filter_num,
         input_dim.0,
         filter_size,
         filter_size,
     )))
     .join(record! {});
-    let bias1 = Variable::<label!(bias1), Ix1, _>::new(Zero::new((filter_num,))).join(record! {});
+    let bias1 = Variable::<label!(bias1), _, _>::new(Zero::new((filter_num,))).join(record! {});
     let conv1 = Convolution::new(filter_stride, filter_pad).join(record! {
         x: &x,
         weight: &weight1,
@@ -85,9 +83,9 @@ fn main() {
     });
 
     let weight2 =
-        Variable::<label!(weight2), Ix2, _>::new(Random::new((pool_output_size, hidden_size)))
+        Variable::<label!(weight2), _, _>::new(Random::new((pool_output_size, hidden_size)))
             .join(record! {});
-    let bias2 = Variable::<label!(bias2), Ix1, _>::new(Zero::new((hidden_size,))).join(record! {});
+    let bias2 = Variable::<label!(bias2), _, _>::new(Zero::new((hidden_size,))).join(record! {});
     let affine1 = Affine::new().join(record! {
         x: &nto2,
         weight: &weight2,
@@ -97,9 +95,9 @@ fn main() {
         x: &affine1
     });
 
-    let weight3 = Variable::<label!(weight3), Ix2, _>::new(Random::new((hidden_size, output_size)))
+    let weight3 = Variable::<label!(weight3), _, _>::new(Random::new((hidden_size, output_size)))
         .join(record! {});
-    let bias3 = Variable::<label!(bias3), Ix1, _>::new(Zero::new((output_size,))).join(record! {});
+    let bias3 = Variable::<label!(bias3), _, _>::new(Zero::new((output_size,))).join(record! {});
     let affine2 = Affine::new().join(record! {
         x: &relu2,
         weight: &weight3,
@@ -131,7 +129,7 @@ fn main() {
             },
             variables.clone(),
         );
-        optimizer.optimize(1., variables.to_mut(), learning_rate);
+        let dvariables = optimizer.optimize(1.);
 
         println!("i:{} loss:{}", n, loss);
     }

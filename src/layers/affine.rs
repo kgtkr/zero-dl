@@ -5,11 +5,6 @@ use frunk::{field, hlist, HNil, Hlist};
 
 use ndarray::prelude::*;
 
-
-
-
-
-
 pub struct AffineOptimizer {
     pub weight: Array2<f32>,
     pub bias: Array1<f32>,
@@ -25,22 +20,20 @@ impl UnconnectedOptimizer for AffineOptimizer {
     type Output = Array2<f32>;
     type Variables = HNil;
 
-    fn optimize<'a>(
-        self,
-        dout: Self::Output,
-        _variables: <Self::Variables as ToMut<'a>>::Output,
-        _learning_rate: f32,
-    ) -> Self::Inputs {
+    fn optimize(self, dout: Self::Output) -> (Self::Inputs, Self::Variables) {
         let dx = dout.dot(&self.weight.t());
 
         let dw = self.x.t().dot(&dout);
         let db = dout.sum_axis(Axis(0));
 
-        record! {
-            x: dx,
-            weight: dw,
-            bias: db
-        }
+        (
+            record! {
+                x: dx,
+                weight: dw,
+                bias: db
+            },
+            HNil,
+        )
     }
 }
 

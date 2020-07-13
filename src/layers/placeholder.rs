@@ -14,13 +14,8 @@ impl<K, V> UnconnectedOptimizer for PlaceholderOptimizer<K, V> {
     type Output = V;
     type Variables = HNil;
 
-    fn optimize<'a>(
-        self,
-        _dout: Self::Output,
-        _variables: <Self::Variables as ToMut<'a>>::Output,
-        _learning_rate: f32,
-    ) -> Self::Inputs {
-        record! {}
+    fn optimize(self, _dout: Self::Output) -> (Self::Inputs, Self::Variables) {
+        (record! {}, HNil)
     }
 }
 

@@ -1,7 +1,7 @@
 use crate::arr_functions;
 use crate::layer::{UnconnectedLayer, UnconnectedOptimizer};
 use frunk::traits::ToMut;
-use frunk::{HNil};
+use frunk::HNil;
 use ndarray::prelude::*;
 
 use ndarray_stats::QuantileExt;
@@ -22,12 +22,7 @@ impl UnconnectedOptimizer for PoolingOptimizer {
     type Output = Array4<f32>;
     type Variables = HNil;
 
-    fn optimize<'a>(
-        self,
-        dout: Self::Output,
-        _variables: <Self::Variables as ToMut<'a>>::Output,
-        _learning_rate: f32,
-    ) -> Self::Inputs {
+    fn optimize(self, dout: Self::Output) -> (Self::Inputs, Self::Variables) {
         let dout = dout.permuted_axes([0, 2, 3, 1]);
 
         let pool_size = self.pool_h * self.pool_w;
@@ -65,9 +60,12 @@ impl UnconnectedOptimizer for PoolingOptimizer {
             self.pad,
         );
 
-        record! {
-            x: dx
-        }
+        (
+            record! {
+                x: dx
+            },
+            HNil,
+        )
     }
 }
 

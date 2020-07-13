@@ -14,8 +14,7 @@ use zero_dl::initializers;
 use zero_dl::initializers::{random::Random, zero::Zero};
 use zero_dl::layer::{LabelledLayers, LabelledOptimizers, Layer, Optimizer, UnconnectedLayer};
 use zero_dl::layers::{
-    initialize_random, initialize_zero, Affine, Convolution, NDimTo2Dim, Placeholder, Pooling,
-    Relu, SoftmaxCrossEntropy, Variable,
+    Affine, Convolution, NDimTo2Dim, Placeholder, Pooling, Relu, SoftmaxCrossEntropy, Variable,
 };
 use zero_dl::mnist::{MnistImages, MnistLabels};
 

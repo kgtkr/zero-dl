@@ -1,15 +1,15 @@
 use crate::arr_functions;
-use crate::layer::{UnconnectedLayer, UnconnectedOptimizer};
+use crate::layer::{UnconnectedBackward, UnconnectedLayer};
 use frunk::traits::ToMut;
 use frunk::HNil;
 use ndarray::prelude::*;
 
-pub struct SoftmaxCrossEntropyOptimizer {
+pub struct SoftmaxCrossEntropyBackward {
     pub y: Array2<f32>,
     pub t: Array2<f32>,
 }
 
-impl UnconnectedOptimizer for SoftmaxCrossEntropyOptimizer {
+impl UnconnectedBackward for SoftmaxCrossEntropyBackward {
     type Inputs = Record! {
         x: Array2<f32>,
         t: Array2<f32>
@@ -17,7 +17,7 @@ impl UnconnectedOptimizer for SoftmaxCrossEntropyOptimizer {
     type Output = f32;
     type Variables = HNil;
 
-    fn optimize(self, _dout: f32) -> (Self::Inputs, Self::Variables) {
+    fn backward(self, _dout: f32) -> (Self::Inputs, Self::Variables) {
         let batch_size = self.t.len_of(Axis(0));
         let dx = (&self.y - &self.t) / batch_size as f32;
 
@@ -52,7 +52,7 @@ impl UnconnectedLayer for SoftmaxCrossEntropy {
         t: Array2<f32>
     };
     type Output = f32;
-    type Optimizer = SoftmaxCrossEntropyOptimizer;
+    type Backward = SoftmaxCrossEntropyBackward;
     type Placeholders = HNil;
     type Variables = HNil;
 
@@ -61,7 +61,7 @@ impl UnconnectedLayer for SoftmaxCrossEntropy {
         _placeholders: Self::Placeholders,
         _variables: Self::Variables,
         inputs: Self::Inputs,
-    ) -> (Self::Output, Self::Optimizer) {
+    ) -> (Self::Output, Self::Backward) {
         record_dest!({
             x,
             t,
@@ -70,7 +70,7 @@ impl UnconnectedLayer for SoftmaxCrossEntropy {
         let y = arr_functions::softmax_batch(x.view());
         let loss = arr_functions::cross_entropy_error_batch(y.view(), t.view());
 
-        (loss, SoftmaxCrossEntropyOptimizer { t, y })
+        (loss, SoftmaxCrossEntropyBackward { t, y })
     }
 
     fn initial_variables(&self) -> Self::Variables {

@@ -6,7 +6,7 @@ use frunk::{field, HCons, HNil};
 // LayerのLabelled HList
 pub trait LabelledLayers {
     type Outputs;
-    type Optimizers: LabelledOptimizers<Outputs = Self::Outputs, Variables = Self::Variables>;
+    type Backwards: LabelledBackwards<Outputs = Self::Outputs, Variables = Self::Variables>;
     type Placeholders;
     type Variables;
 
@@ -14,14 +14,14 @@ pub trait LabelledLayers {
         &self,
         placeholders: Self::Placeholders,
         variables: Self::Variables,
-    ) -> (Self::Outputs, Self::Optimizers);
+    ) -> (Self::Outputs, Self::Backwards);
 
     fn initial_variables(&self) -> Self::Variables;
 }
 
 impl LabelledLayers for HNil {
     type Outputs = HNil;
-    type Optimizers = HNil;
+    type Backwards = HNil;
     type Placeholders = HNil;
     type Variables = HNil;
 
@@ -29,7 +29,7 @@ impl LabelledLayers for HNil {
         &self,
         HNil: Self::Placeholders,
         _variables: Self::Variables,
-    ) -> (Self::Outputs, Self::Optimizers) {
+    ) -> (Self::Outputs, Self::Backwards) {
         (HNil, HNil)
     }
 
@@ -44,7 +44,7 @@ where
     Type::Variables: ConcatIsInverseSplit<Tail::Variables>,
 {
     type Outputs = HCons<Field<Name, Type::Output>, Tail::Outputs>;
-    type Optimizers = HCons<Field<Name, Type::Optimizer>, Tail::Optimizers>;
+    type Backwards = HCons<Field<Name, Type::Backward>, Tail::Backwards>;
     type Placeholders = <Type::Placeholders as Concat<Tail::Placeholders>>::Output;
     type Variables = <Type::Variables as Concat<Tail::Variables>>::Output;
 
@@ -52,20 +52,20 @@ where
         &self,
         placeholders: Self::Placeholders,
         variables: Self::Variables,
-    ) -> (Self::Outputs, Self::Optimizers) {
+    ) -> (Self::Outputs, Self::Backwards) {
         let (head_placeholders, tail_placeholders) = placeholders.split();
         let (head_variables, tail_variables) = variables.split();
-        let (head_output, head_optimizer) =
+        let (head_output, head_backward) =
             self.head.value.forward(head_placeholders, head_variables);
-        let (tail_outputs, tail_optimizers) = self.tail.forward(tail_placeholders, tail_variables);
+        let (tail_outputs, tail_backwards) = self.tail.forward(tail_placeholders, tail_variables);
         (
             HCons {
                 head: field![Name, head_output],
                 tail: tail_outputs,
             },
             HCons {
-                head: field![Name, head_optimizer],
-                tail: tail_optimizers,
+                head: field![Name, head_backward],
+                tail: tail_backwards,
             },
         )
     }
@@ -77,24 +77,24 @@ where
     }
 }
 
-// OptimizerのLabelled HList
-pub trait LabelledOptimizers: Sized {
+// BackwardのLabelled HList
+pub trait LabelledBackwards: Sized {
     type Outputs;
     type Variables;
 
-    fn optimize(self, douts: Self::Outputs) -> Self::Variables;
+    fn backward(self, douts: Self::Outputs) -> Self::Variables;
 }
 
-impl LabelledOptimizers for HNil {
+impl LabelledBackwards for HNil {
     type Outputs = HNil;
     type Variables = HNil;
 
-    fn optimize(self, _douts: Self::Outputs) -> Self::Variables {
+    fn backward(self, _douts: Self::Outputs) -> Self::Variables {
         HNil
     }
 }
 
-impl<Name, Type: Optimizer, Tail: LabelledOptimizers> LabelledOptimizers
+impl<Name, Type: Backward, Tail: LabelledBackwards> LabelledBackwards
     for HCons<Field<Name, Type>, Tail>
 where
     Type::Variables: ConcatIsInverseSplit<Tail::Variables>,
@@ -102,24 +102,24 @@ where
     type Outputs = HCons<Field<Name, Type::Output>, Tail::Outputs>;
     type Variables = <Type::Variables as Concat<Tail::Variables>>::Output;
 
-    fn optimize(self, douts: Self::Outputs) -> Self::Variables {
-        let d1 = self.head.value.optimize(douts.head.value);
-        let d2 = self.tail.optimize(douts.tail);
+    fn backward(self, douts: Self::Outputs) -> Self::Variables {
+        let d1 = self.head.value.backward(douts.head.value);
+        let d2 = self.tail.backward(douts.tail);
 
         d1.concat(d2)
     }
 }
 
-pub trait Optimizer {
+pub trait Backward {
     type Output;
     type Variables;
 
-    fn optimize(self, douts: Self::Output) -> Self::Variables;
+    fn backward(self, douts: Self::Output) -> Self::Variables;
 }
 
 pub trait Layer {
     type Output;
-    type Optimizer: Optimizer<Output = Self::Output, Variables = Self::Variables>;
+    type Backward: Backward<Output = Self::Output, Variables = Self::Variables>;
     type Placeholders;
     type Variables;
 
@@ -127,7 +127,7 @@ pub trait Layer {
         &self,
         placeholders: Self::Placeholders,
         variables: Self::Variables,
-    ) -> (Self::Output, Self::Optimizer);
+    ) -> (Self::Output, Self::Backward);
 
     fn initial_variables(&self) -> Self::Variables;
 }
@@ -146,7 +146,7 @@ pub trait UnconnectedLayer: Sized {
     // 出力の型
     type Output;
 
-    type Optimizer: UnconnectedOptimizer<
+    type Backward: UnconnectedBackward<
         Inputs = Self::Inputs,
         Output = Self::Output,
         Variables = Self::Variables,
@@ -167,18 +167,18 @@ pub trait UnconnectedLayer: Sized {
         placeholders: Self::Placeholders,
         variables: Self::Variables,
         inputs: Self::Inputs,
-    ) -> (Self::Output, Self::Optimizer);
+    ) -> (Self::Output, Self::Backward);
 
     fn initial_variables(&self) -> Self::Variables;
 }
 
-// 親レイヤーと未接続のOptimizer
-pub trait UnconnectedOptimizer {
+// 親レイヤーと未接続のBackward
+pub trait UnconnectedBackward {
     type Inputs;
     type Output;
     type Variables;
 
-    fn optimize(self, douts: Self::Output) -> (Self::Inputs, Self::Variables);
+    fn backward(self, douts: Self::Output) -> (Self::Inputs, Self::Variables);
 }
 
 pub struct LayerAdapter<I, L> {
@@ -190,11 +190,11 @@ impl<I: LabelledLayers, L: UnconnectedLayer<Inputs = I::Outputs>> Layer for Laye
 where
     I::Placeholders: ConcatIsInverseSplit<L::Placeholders>,
     I::Variables: ConcatIsInverseSplit<L::Variables>,
-    OptimizerAdapter<I::Optimizers, L::Optimizer>:
-        Optimizer<Output = L::Output, Variables = <I::Variables as Concat<L::Variables>>::Output>,
+    BackwardAdapter<I::Backwards, L::Backward>:
+        Backward<Output = L::Output, Variables = <I::Variables as Concat<L::Variables>>::Output>,
 {
     type Output = L::Output;
-    type Optimizer = OptimizerAdapter<I::Optimizers, L::Optimizer>;
+    type Backward = BackwardAdapter<I::Backwards, L::Backward>;
     type Placeholders = <I::Placeholders as Concat<L::Placeholders>>::Output;
     type Variables = <I::Variables as Concat<L::Variables>>::Output;
 
@@ -202,21 +202,21 @@ where
         &self,
         placeholders: Self::Placeholders,
         variables: Self::Variables,
-    ) -> (Self::Output, Self::Optimizer) {
+    ) -> (Self::Output, Self::Backward) {
         let (input_placeholders, layer_placeholders) = placeholders.split();
         let (input_variables, layer_variables) = variables.split();
-        let (inputs, input_optimizers) = self
+        let (inputs, input_backwards) = self
             .input_layers
             .forward(input_placeholders, input_variables);
-        let (output, optimizer) = self
+        let (output, backward) = self
             .layer
             .forward(layer_placeholders, layer_variables, inputs);
 
         (
             output,
-            OptimizerAdapter {
-                input_optimizers,
-                optimizer,
+            BackwardAdapter {
+                input_backwards,
+                backward,
             },
         )
     }
@@ -228,22 +228,22 @@ where
     }
 }
 
-pub struct OptimizerAdapter<I, O> {
-    input_optimizers: I,
-    optimizer: O,
+pub struct BackwardAdapter<I, O> {
+    input_backwards: I,
+    backward: O,
 }
 
-impl<I: LabelledOptimizers, O: UnconnectedOptimizer<Inputs = I::Outputs>> Optimizer
-    for OptimizerAdapter<I, O>
+impl<I: LabelledBackwards, O: UnconnectedBackward<Inputs = I::Outputs>> Backward
+    for BackwardAdapter<I, O>
 where
     I::Variables: ConcatIsInverseSplit<O::Variables>,
 {
     type Output = O::Output;
     type Variables = <I::Variables as Concat<O::Variables>>::Output;
 
-    fn optimize(self, dout: Self::Output) -> Self::Variables {
-        let (grads, d1) = self.optimizer.optimize(dout);
-        let d2 = self.input_optimizers.optimize(grads);
+    fn backward(self, dout: Self::Output) -> Self::Variables {
+        let (grads, d1) = self.backward.backward(dout);
+        let d2 = self.input_backwards.backward(grads);
 
         d2.concat(d1)
     }
@@ -251,7 +251,7 @@ where
 
 impl<T: Layer> Layer for &T {
     type Output = T::Output;
-    type Optimizer = T::Optimizer;
+    type Backward = T::Backward;
     type Placeholders = T::Placeholders;
     type Variables = T::Variables;
 
@@ -259,7 +259,7 @@ impl<T: Layer> Layer for &T {
         &self,
         placeholders: Self::Placeholders,
         variables: Self::Variables,
-    ) -> (Self::Output, Self::Optimizer) {
+    ) -> (Self::Output, Self::Backward) {
         (*self).forward(placeholders, variables)
     }
 

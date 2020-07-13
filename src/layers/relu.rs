@@ -1,22 +1,22 @@
-use crate::layer::{UnconnectedLayer, UnconnectedOptimizer};
+use crate::layer::{UnconnectedBackward, UnconnectedLayer};
 use frunk::traits::ToMut;
 use frunk::HNil;
 use ndarray::prelude::*;
 use ndarray::Zip;
 use std::marker::PhantomData;
 
-pub struct ReluOptimizer<D> {
+pub struct ReluBackward<D> {
     pub x: Array<f32, D>,
 }
 
-impl<D: Dimension> UnconnectedOptimizer for ReluOptimizer<D> {
+impl<D: Dimension> UnconnectedBackward for ReluBackward<D> {
     type Inputs = Record! {
         x: Array<f32, D>
     };
     type Output = Array<f32, D>;
     type Variables = HNil;
 
-    fn optimize(self, mut dout: Self::Output) -> (Self::Inputs, Self::Variables) {
+    fn backward(self, mut dout: Self::Output) -> (Self::Inputs, Self::Variables) {
         Zip::from(&mut dout).and(&self.x).apply(|dout_x, &x| {
             if x <= 0. {
                 *dout_x = 0.;
@@ -52,7 +52,7 @@ impl<D: Dimension> UnconnectedLayer for Relu<D> {
         x: Array<f32, D>
     };
     type Output = Array<f32, D>;
-    type Optimizer = ReluOptimizer<D>;
+    type Backward = ReluBackward<D>;
     type Placeholders = HNil;
     type Variables = HNil;
 
@@ -61,13 +61,13 @@ impl<D: Dimension> UnconnectedLayer for Relu<D> {
         _placeholders: Self::Placeholders,
         _variables: Self::Variables,
         inputs: Self::Inputs,
-    ) -> (Self::Output, Self::Optimizer) {
+    ) -> (Self::Output, Self::Backward) {
         record_dest!({
             x,
         } = inputs);
 
         let y = x.mapv(|x| x.max(0.));
-        (y, ReluOptimizer { x })
+        (y, ReluBackward { x })
     }
 
     fn initial_variables(&self) -> Self::Variables {

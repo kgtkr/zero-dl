@@ -10,7 +10,7 @@ use rand::prelude::*;
 use std::fs::File;
 
 use zero_dl::initializers::{random::Random, zero::Zero};
-use zero_dl::layer::{LabelledLayers, LabelledOptimizers, Layer, Optimizer, UnconnectedLayer};
+use zero_dl::layer::{Backward, LabelledBackwards, LabelledLayers, Layer, UnconnectedLayer};
 use zero_dl::layers::{
     Affine, Convolution, NDimTo2Dim, Placeholder, Pooling, Relu, SoftmaxCrossEntropy, Variable,
 };
@@ -122,14 +122,14 @@ fn main() {
 
         let x = train_x.select(Axis(0), &ixs[..]);
         let t = train_t.select(Axis(0), &ixs[..]);
-        let (loss, optimizer) = softmax_with_loss.forward(
+        let (loss, backward) = softmax_with_loss.forward(
             record! {
                 x: x,
                 t: t
             },
             variables.clone(),
         );
-        let dvariables = optimizer.optimize(1.);
+        let dvariables = backward.backward(1.);
 
         println!("i:{} loss:{}", n, loss);
     }

@@ -1,5 +1,5 @@
 use crate::initializer::Initializer;
-use crate::layer::{UnconnectedLayer, UnconnectedOptimizer};
+use crate::layer::{UnconnectedBackward, UnconnectedLayer};
 use frunk::field;
 use frunk::labelled::Field;
 use frunk::traits::ToMut;
@@ -14,16 +14,16 @@ use std::marker::PhantomData;
 } */
 
 #[derive(Debug, Clone)]
-pub struct VariableOptimizer<K, D> {
+pub struct VariableBackward<K, D> {
     pub phantom: PhantomData<(K, D)>,
 }
 
-impl<K: 'static, V: 'static> UnconnectedOptimizer for VariableOptimizer<K, V> {
+impl<K: 'static, V: 'static> UnconnectedBackward for VariableBackward<K, V> {
     type Inputs = Record! {};
     type Output = V;
     type Variables = HCons<Field<K, V>, HNil>;
 
-    fn optimize(self, dout: Self::Output) -> (Self::Inputs, Self::Variables) {
+    fn backward(self, dout: Self::Output) -> (Self::Inputs, Self::Variables) {
         (
             record! {},
             HCons {
@@ -55,7 +55,7 @@ where
 impl<K: 'static, V: 'static, I: Initializer<Output = V>> UnconnectedLayer for Variable<K, V, I> {
     type Inputs = Record! {};
     type Output = V;
-    type Optimizer = VariableOptimizer<K, V>;
+    type Backward = VariableBackward<K, V>;
     type Placeholders = HNil;
     type Variables = HCons<Field<K, V>, HNil>;
 
@@ -64,12 +64,12 @@ impl<K: 'static, V: 'static, I: Initializer<Output = V>> UnconnectedLayer for Va
         _placeholders: Self::Placeholders,
         variables: Self::Variables,
         inputs: Self::Inputs,
-    ) -> (Self::Output, Self::Optimizer) {
+    ) -> (Self::Output, Self::Backward) {
         record_dest!({} = inputs);
 
         (
             variables.head.value,
-            VariableOptimizer {
+            VariableBackward {
                 phantom: PhantomData,
             },
         )

@@ -1,21 +1,21 @@
-use crate::layer::{UnconnectedLayer, UnconnectedOptimizer};
+use crate::layer::{UnconnectedBackward, UnconnectedLayer};
 use frunk::traits::ToMut;
 use frunk::HNil;
 use ndarray::prelude::*;
 use std::marker::PhantomData;
 
-pub struct NDimTo2DimOptimizer<D: Dimension> {
+pub struct NDimTo2DimBackward<D: Dimension> {
     pub original_x_shape: D::Pattern,
 }
 
-impl<D: Dimension> UnconnectedOptimizer for NDimTo2DimOptimizer<D> {
+impl<D: Dimension> UnconnectedBackward for NDimTo2DimBackward<D> {
     type Inputs = Record! {
         x: Array<f32, D>
     };
     type Output = Array2<f32>;
     type Variables = HNil;
 
-    fn optimize(self, dout: Self::Output) -> (Self::Inputs, Self::Variables) {
+    fn backward(self, dout: Self::Output) -> (Self::Inputs, Self::Variables) {
         let dx = dout.to_shared().reshape(self.original_x_shape).to_owned();
 
         (
@@ -47,7 +47,7 @@ impl<D: Dimension> UnconnectedLayer for NDimTo2Dim<D> {
         x: Array<f32, D>
     };
     type Output = Array2<f32>;
-    type Optimizer = NDimTo2DimOptimizer<D>;
+    type Backward = NDimTo2DimBackward<D>;
     type Placeholders = HNil;
     type Variables = HNil;
 
@@ -56,7 +56,7 @@ impl<D: Dimension> UnconnectedLayer for NDimTo2Dim<D> {
         _placeholders: Self::Placeholders,
         _variables: Self::Variables,
         inputs: Self::Inputs,
-    ) -> (Self::Output, Self::Optimizer) {
+    ) -> (Self::Output, Self::Backward) {
         record_dest!({
             x,
         } = inputs);
@@ -70,7 +70,7 @@ impl<D: Dimension> UnconnectedLayer for NDimTo2Dim<D> {
             .reshape((first_len, x_len / first_len))
             .to_owned();
 
-        (out, NDimTo2DimOptimizer { original_x_shape })
+        (out, NDimTo2DimBackward { original_x_shape })
     }
 
     fn initial_variables(&self) -> Self::Variables {

@@ -1,12 +1,12 @@
 use crate::arr_functions;
-use crate::layer::{UnconnectedLayer, UnconnectedOptimizer};
+use crate::layer::{UnconnectedBackward, UnconnectedLayer};
 use frunk::traits::ToMut;
 use frunk::HNil;
 use ndarray::prelude::*;
 
 use ndarray_stats::QuantileExt;
 
-pub struct PoolingOptimizer {
+pub struct PoolingBackward {
     pub x: Array4<f32>,
     pub arg_max: Array1<usize>,
     pub pool_h: usize,
@@ -15,14 +15,14 @@ pub struct PoolingOptimizer {
     pub pad: usize,
 }
 
-impl UnconnectedOptimizer for PoolingOptimizer {
+impl UnconnectedBackward for PoolingBackward {
     type Inputs = Record! {
         x: Array4<f32>
     };
     type Output = Array4<f32>;
     type Variables = HNil;
 
-    fn optimize(self, dout: Self::Output) -> (Self::Inputs, Self::Variables) {
+    fn backward(self, dout: Self::Output) -> (Self::Inputs, Self::Variables) {
         let dout = dout.permuted_axes([0, 2, 3, 1]);
 
         let pool_size = self.pool_h * self.pool_w;
@@ -95,7 +95,7 @@ impl UnconnectedLayer for Pooling {
         x: Array4<f32>
     };
     type Output = Array4<f32>;
-    type Optimizer = PoolingOptimizer;
+    type Backward = PoolingBackward;
     type Placeholders = HNil;
     type Variables = HNil;
 
@@ -104,7 +104,7 @@ impl UnconnectedLayer for Pooling {
         _placeholders: Self::Placeholders,
         _variables: Self::Variables,
         inputs: Self::Inputs,
-    ) -> (Self::Output, Self::Optimizer) {
+    ) -> (Self::Output, Self::Backward) {
         record_dest!({
             x,
         } = inputs);
@@ -131,7 +131,7 @@ impl UnconnectedLayer for Pooling {
 
         (
             out,
-            PoolingOptimizer {
+            PoolingBackward {
                 x,
                 arg_max,
                 stride: self.stride,

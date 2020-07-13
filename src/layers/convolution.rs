@@ -1,13 +1,13 @@
 use crate::arr_functions;
+use crate::layer::UnconnectedBackward;
 use crate::layer::UnconnectedLayer;
-use crate::layer::UnconnectedOptimizer;
 
 use frunk::traits::ToMut;
 use frunk::HNil;
 
 use ndarray::prelude::*;
 
-pub struct ConvolutionOptimizer {
+pub struct ConvolutionBackward {
     pub weight: Array4<f32>,
     pub bias: Array1<f32>,
     pub x: Array4<f32>,
@@ -17,7 +17,7 @@ pub struct ConvolutionOptimizer {
     pub col_W: Array2<f32>,
 }
 
-impl UnconnectedOptimizer for ConvolutionOptimizer {
+impl UnconnectedBackward for ConvolutionBackward {
     type Inputs = Record! {
         x: Array4<f32>,
         weight: Array4<f32>,
@@ -26,7 +26,7 @@ impl UnconnectedOptimizer for ConvolutionOptimizer {
     type Output = Array4<f32>;
     type Variables = HNil;
 
-    fn optimize(self, dout: Self::Output) -> (Self::Inputs, Self::Variables) {
+    fn backward(self, dout: Self::Output) -> (Self::Inputs, Self::Variables) {
         let (FN, C, FH, FW) = self.weight.dim();
         let dout_len = dout.len();
         let dout = dout
@@ -73,7 +73,7 @@ impl UnconnectedLayer for Convolution {
         bias: Array1<f32>
     };
     type Output = Array4<f32>;
-    type Optimizer = ConvolutionOptimizer;
+    type Backward = ConvolutionBackward;
     type Placeholders = HNil;
     type Variables = HNil;
 
@@ -82,7 +82,7 @@ impl UnconnectedLayer for Convolution {
         _placeholders: Self::Placeholders,
         _variables: Self::Variables,
         inputs: Self::Inputs,
-    ) -> (Self::Output, Self::Optimizer) {
+    ) -> (Self::Output, Self::Backward) {
         record_dest!({
             x,
             weight,
@@ -107,7 +107,7 @@ impl UnconnectedLayer for Convolution {
 
         (
             out,
-            ConvolutionOptimizer {
+            ConvolutionBackward {
                 weight,
                 bias,
                 x,
